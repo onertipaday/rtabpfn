@@ -1,0 +1,31 @@
+Package: rtabpfn
+Title: R Interface to TabPFN for Tabular Data Classification and Regression
+Version: 0.1.0
+Authors@R: person("rtabpfn authors", role = c("aut", "cre"), email = "noreply@example.com")
+Description: Provides access to TabPFN (Tabular Prior-Data Fitted Networks)
+    from R via reticulate. Supports classification and regression with a
+    native R API and tidymodels integration through a custom parsnip engine.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.0
+Depends: R (>= 4.1.0)
+Imports:
+    reticulate (>= 1.34),
+    rlang (>= 1.1.0),
+    tibble (>= 3.2.0),
+    dplyr (>= 1.1.0)
+Suggests:
+    parsnip (>= 1.2.0),
+    workflows (>= 1.1.0),
+    recipes (>= 1.0.0),
+    tune (>= 1.2.0),
+    rsample (>= 1.2.0),
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    data.table,
+    pkgdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+SystemRequirements: Python (>= 3.9) with tabpfn package
