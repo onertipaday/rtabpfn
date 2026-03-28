@@ -88,3 +88,62 @@ tabpfn_classifier <- function(x, y,
     class = "tabpfn_classifier"
   )
 }
+
+#' Predict with a TabPFN Classifier
+#'
+#' @param object A fitted `tabpfn_classifier` object.
+#' @param new_data A data.frame, tibble, data.table, or matrix of new observations.
+#' @param type Character. Type of prediction: `"class"` for predicted labels,
+#'   `"prob"` for class probabilities. Default `"class"`.
+#' @param ... Not used.
+#'
+#' @return A tibble. For `type = "class"`, a column `.pred_class` (factor).
+#'   For `type = "prob"`, columns `.pred_{classname}` (double).
+#'
+#' @export
+predict.tabpfn_classifier <- function(object, new_data, type = "class", ...) {
+  valid_types <- c("class", "prob")
+  if (!type %in% valid_types) {
+    rlang::abort(paste0(
+      'type must be one of: ', paste0('"', valid_types, '"', collapse = ", "),
+      '. Got: "', type, '"'
+    ))
+  }
+
+  x_np <- ensure_numpy_array(new_data)
+
+  if (type == "class") {
+    preds_raw <- wrap_python_error(object$.py$predict(x_np))
+    preds_int <- as.integer(reticulate::py_to_r(preds_raw)) + 1L
+    pred_labels <- object$classes[preds_int]
+    tibble::tibble(.pred_class = factor(pred_labels, levels = object$classes))
+  } else {
+    probs_raw <- wrap_python_error(object$.py$predict_proba(x_np))
+    probs <- reticulate::py_to_r(probs_raw)
+    colnames(probs) <- paste0(".pred_", object$classes)
+    tibble::as_tibble(probs)
+  }
+}
+
+#' @export
+print.tabpfn_classifier <- function(x, ...) {
+  cat("# TabPFN Classifier (", x$model_version, ")\n", sep = "")
+  cat("# ", x$n_classes, " classes, ",
+      x$n_features, " features, trained on ",
+      x$n_train, " samples\n", sep = "")
+  cat("# n_estimators=", x$params$n_estimators,
+      ", device=", x$params$device, "\n", sep = "")
+  invisible(x)
+}
+
+#' @export
+summary.tabpfn_classifier <- function(object, ...) {
+  print(object)
+  cat("\nClasses: ", paste(object$classes, collapse = ", "), "\n")
+  cat("Features: ", paste(object$feature_names, collapse = ", "), "\n")
+  cat("\nParameters:\n")
+  for (nm in names(object$params)) {
+    cat("  ", nm, ": ", format(object$params[[nm]]), "\n", sep = "")
+  }
+  invisible(object)
+}
