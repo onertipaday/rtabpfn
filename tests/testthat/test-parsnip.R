@@ -31,16 +31,16 @@ test_that("parsnip classification workflow fits and predicts", {
     workflows::add_recipe(recipes::recipe(Species ~ ., data = iris)) |>
     workflows::add_model(spec)
 
-  fit <- wf |> parsnip::fit(data = iris[1:100, ])
+  fit <- wf |> parsnip::fit(data = iris[1:120, ])
 
-  preds <- predict(fit, iris[101:150, ])
+  preds <- predict(fit, iris[121:150, ])
   expect_s3_class(preds, "tbl_df")
   expect_named(preds, ".pred_class")
-  expect_equal(nrow(preds), 50L)
+  expect_equal(nrow(preds), 30L)
 
-  probs <- predict(fit, iris[101:150, ], type = "prob")
+  probs <- predict(fit, iris[121:150, ], type = "prob")
   expect_s3_class(probs, "tbl_df")
-  expect_equal(nrow(probs), 50L)
+  expect_equal(nrow(probs), 30L)
   expect_true(all(grepl("^\\.pred_", names(probs))))
 })
 

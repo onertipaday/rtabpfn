@@ -61,13 +61,13 @@ test_that("predict.tabpfn_classifier returns class predictions as tibble", {
 test_that("predict.tabpfn_classifier returns probabilities as tibble", {
   skip_if_no_tabpfn()
   fit <- tabpfn_classifier(
-    iris[1:100, 1:4], iris$Species[1:100],
+    iris[1:120, 1:4], iris$Species[1:120],
     n_estimators = 2L, device = "cpu"
   )
-  probs <- predict(fit, iris[101:150, 1:4], type = "prob")
+  probs <- predict(fit, iris[121:150, 1:4], type = "prob")
   expect_s3_class(probs, "tbl_df")
   expect_named(probs, c(".pred_setosa", ".pred_versicolor", ".pred_virginica"))
-  expect_equal(nrow(probs), 50L)
+  expect_equal(nrow(probs), 30L)
   row_sums <- rowSums(as.matrix(probs))
   expect_true(all(abs(row_sums - 1.0) < 0.01))
 })
