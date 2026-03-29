@@ -1,3 +1,7 @@
+# Suppress R CMD check NOTE for NSE variables used inside rlang::expr() calls
+# that R's static analysis cannot resolve.
+utils::globalVariables(c("object", "new_data"))
+
 #' TabPFN Model Specification for parsnip
 #'
 #' Creates a parsnip model specification for TabPFN.
