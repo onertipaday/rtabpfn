@@ -1,6 +1,9 @@
 ---
 title: "Getting Started with rtabpfn"
 output: rmarkdown::html_vignette
+knitr:
+  opts_chunk:
+    dev: "pdf"
 vignette: >
   %\VignetteIndexEntry{Getting Started with rtabpfn}
   %\VignetteEngine{knitr::rmarkdown}

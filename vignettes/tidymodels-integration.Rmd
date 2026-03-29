@@ -1,6 +1,9 @@
 ---
 title: "TabPFN with tidymodels"
 output: rmarkdown::html_vignette
+knitr:
+  opts_chunk:
+    dev: "pdf"
 vignette: >
   %\VignetteIndexEntry{TabPFN with tidymodels}
   %\VignetteEngine{knitr::rmarkdown}
@@ -61,7 +64,7 @@ iris_rec <- recipe(Species ~ ., data = iris_train) |>
 clf_spec <- tabpfn_model(
   mode          = "classification",
   n_estimators  = 2L,
-  device        = "cpu"
+  device        = "cuda"
 )
 ```
 
