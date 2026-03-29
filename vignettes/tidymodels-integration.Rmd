@@ -1,0 +1,222 @@
+---
+title: "TabPFN with tidymodels"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{TabPFN with tidymodels}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = reticulate::py_module_available("tabpfn") &&
+         requireNamespace("parsnip",   quietly = TRUE) &&
+         requireNamespace("workflows", quietly = TRUE) &&
+         requireNamespace("recipes",   quietly = TRUE)
+)
+```
+
+rtabpfn integrates with the [tidymodels](https://www.tidymodels.org/) ecosystem through a custom parsnip engine. This lets you use TabPFN inside the same `recipe` → `workflow` → `fit` → `predict` pipeline you already know.
+
+## Overview
+
+`tabpfn_model()` creates a parsnip model specification. It accepts:
+
+- `mode`: `"classification"` or `"regression"`
+- `n_estimators`: number of ensemble members (default `8L`)
+- `softmax_temperature`: predictive sharpness (default `0.9`)
+- `device`: `"auto"`, `"cpu"`, or `"cuda"` (default `"auto"`)
+- `model_version`: TabPFN checkpoint — `NULL` (default, v2.6), `"v2"`, `"v2.5"`, or `"v2.6"`
+
+All hyperparameters can be wrapped in `tune::tune()` for grid search.
+
+## Classification Workflow
+
+```{r libs-class}
+library(rtabpfn)
+library(parsnip)
+library(workflows)
+library(recipes)
+library(yardstick)
+library(rsample)
+```
+
+Split the iris data, build a recipe, and fit a workflow:
+
+```{r classification-split}
+set.seed(42)
+iris_split <- initial_split(iris, prop = 0.8, strata = Species)
+iris_train <- training(iris_split)
+iris_test  <- testing(iris_split)
+```
+
+```{r classification-recipe}
+iris_rec <- recipe(Species ~ ., data = iris_train) |>
+  step_normalize(all_numeric_predictors())
+```
+
+```{r classification-spec}
+clf_spec <- tabpfn_model(
+  mode          = "classification",
+  n_estimators  = 2L,
+  device        = "cpu"
+)
+```
+
+```{r classification-workflow}
+clf_wf <- workflow() |>
+  add_recipe(iris_rec) |>
+  add_model(clf_spec)
+
+clf_fit <- fit(clf_wf, data = iris_train)
+clf_fit
+```
+
+Predict class labels and evaluate accuracy:
+
+```{r classification-predict}
+preds_class <- predict(clf_fit, iris_test, type = "class")
+preds_class
+
+results_class <- iris_test |>
+  dplyr::select(Species) |>
+  dplyr::bind_cols(preds_class)
+
+accuracy(results_class, truth = Species, estimate = .pred_class)
+```
+
+Predict class probabilities:
+
+```{r classification-prob}
+preds_prob <- predict(clf_fit, iris_test, type = "prob")
+head(preds_prob)
+```
+
+## Regression Workflow
+
+```{r libs-reg}
+library(yardstick)
+```
+
+```{r regression-split}
+set.seed(42)
+mtcars_split <- initial_split(mtcars, prop = 0.8)
+mtcars_train <- training(mtcars_split)
+mtcars_test  <- testing(mtcars_split)
+```
+
+```{r regression-recipe}
+mtcars_rec <- recipe(mpg ~ ., data = mtcars_train) |>
+  step_normalize(all_numeric_predictors())
+```
+
+```{r regression-spec}
+reg_spec <- tabpfn_model(
+  mode          = "regression",
+  n_estimators  = 2L,
+  device        = "cpu"
+)
+```
+
+```{r regression-workflow}
+reg_wf <- workflow() |>
+  add_recipe(mtcars_rec) |>
+  add_model(reg_spec)
+
+reg_fit <- fit(reg_wf, data = mtcars_train)
+reg_fit
+```
+
+Predict numeric outcomes and compute RMSE:
+
+```{r regression-predict}
+preds_num <- predict(reg_fit, mtcars_test, type = "numeric")
+head(preds_num)
+
+results_reg <- mtcars_test |>
+  dplyr::select(mpg) |>
+  dplyr::bind_cols(preds_num)
+
+rmse(results_reg, truth = mpg, estimate = .pred)
+```
+
+## Cross-Validation
+
+Use `rsample::vfold_cv()` with `tune::fit_resamples()` to estimate out-of-sample performance without hyperparameter tuning:
+
+```{r cv-setup}
+library(tune)
+```
+
+```{r cv-run}
+set.seed(123)
+iris_folds <- vfold_cv(iris_train, v = 5, strata = Species)
+
+cv_spec <- tabpfn_model(
+  mode          = "classification",
+  n_estimators  = 2L,
+  device        = "cpu"
+)
+
+cv_wf <- workflow() |>
+  add_recipe(iris_rec) |>
+  add_model(cv_spec)
+
+cv_results <- fit_resamples(
+  cv_wf,
+  resamples = iris_folds,
+  metrics   = metric_set(accuracy, roc_auc),
+  control   = control_resamples(save_pred = TRUE)
+)
+
+collect_metrics(cv_results)
+```
+
+## Hyperparameter Tuning
+
+Wrap hyperparameters with `tune()` to search over a grid. This is illustrative — running a full grid search can be slow, so this chunk is not evaluated.
+
+```{r tuning, eval = FALSE}
+library(tune)
+library(dials)
+
+set.seed(42)
+iris_folds_tune <- vfold_cv(iris_train, v = 3, strata = Species)
+
+tune_spec <- tabpfn_model(
+  mode                = "classification",
+  n_estimators        = tune(),
+  softmax_temperature = tune(),
+  device              = "cpu"
+)
+
+tune_rec <- recipe(Species ~ ., data = iris_train) |>
+  step_normalize(all_numeric_predictors())
+
+tune_wf <- workflow() |>
+  add_recipe(tune_rec) |>
+  add_model(tune_spec)
+
+# Define a manual grid
+tune_grid <- expand.grid(
+  n_estimators        = c(4L, 8L, 16L),
+  softmax_temperature = c(0.7, 0.9, 1.1)
+)
+
+tune_results <- tune_grid(
+  tune_wf,
+  resamples = iris_folds_tune,
+  grid      = tune_grid,
+  metrics   = metric_set(accuracy)
+)
+
+# Show best configurations
+show_best(tune_results, metric = "accuracy")
+
+# Finalise the workflow with the best hyperparameters
+best_params <- select_best(tune_results, metric = "accuracy")
+final_wf    <- finalize_workflow(tune_wf, best_params)
+final_fit   <- fit(final_wf, data = iris_train)
+```

@@ -1,0 +1,178 @@
+---
+title: "Getting Started with rtabpfn"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with rtabpfn}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = reticulate::py_module_available("tabpfn")
+)
+```
+
+rtabpfn provides an R interface to [TabPFN](https://github.com/automl/tabpfn), a transformer-based model for tabular data that performs in-context learning — it is trained once on synthetic data and then applies to any new dataset without gradient-based fine-tuning.
+
+## Installation
+
+Install the R package from GitHub:
+
+```r
+# install.packages("pak")
+pak::pak("your-org/rtabpfn")
+```
+
+Then install the TabPFN Python package into a dedicated virtual environment:
+
+```r
+library(rtabpfn)
+install_tabpfn()
+```
+
+`install_tabpfn()` creates a `"r-tabpfn"` virtual environment and installs the `tabpfn` Python package via pip. You only need to do this once.
+
+## Classification
+
+Use `tabpfn_classifier()` to train a classifier. The function accepts a data frame of predictors `x` and a factor (or character) vector of labels `y`.
+
+```{r classification-fit}
+library(rtabpfn)
+
+# Prepare data
+x_train <- iris[1:120, 1:4]
+y_train <- iris$Species[1:120]
+x_test  <- iris[121:150, 1:4]
+y_test  <- iris$Species[121:150]
+
+# Fit the classifier
+clf <- tabpfn_classifier(
+  x           = x_train,
+  y           = y_train,
+  n_estimators = 2L,
+  device       = "cpu"
+)
+clf
+```
+
+Predict class labels with `type = "class"`:
+
+```{r classification-class}
+preds_class <- predict(clf, x_test, type = "class")
+head(preds_class)
+
+# Accuracy
+mean(preds_class$.pred_class == y_test)
+```
+
+Predict class probabilities with `type = "prob"`:
+
+```{r classification-prob}
+preds_prob <- predict(clf, x_test, type = "prob")
+head(preds_prob)
+```
+
+The probability tibble has one column per class, named `.pred_<classname>`.
+
+## Regression
+
+Use `tabpfn_regressor()` to train a regressor. The target `y` must be a numeric vector.
+
+```{r regression-fit}
+x_train_r <- mtcars[1:25, -1]
+y_train_r  <- mtcars$mpg[1:25]
+x_test_r   <- mtcars[26:32, -1]
+y_test_r   <- mtcars$mpg[26:32]
+
+reg <- tabpfn_regressor(
+  x            = x_train_r,
+  y            = y_train_r,
+  n_estimators = 2L,
+  device       = "cpu"
+)
+reg
+```
+
+Predict the mean with `type = "numeric"` (the default):
+
+```{r regression-numeric}
+preds_num <- predict(reg, x_test_r, type = "numeric")
+head(preds_num)
+
+# RMSE
+sqrt(mean((preds_num$.pred - y_test_r)^2))
+```
+
+Predict quantiles with `type = "quantile"`. The result is a long tibble with columns `.row`, `.quantile`, and `.pred`:
+
+```{r regression-quantile}
+preds_q <- predict(reg, x_test_r,
+                   type      = "quantile",
+                   quantiles = c(0.1, 0.5, 0.9))
+head(preds_q, 9)
+```
+
+## Model Versions
+
+TabPFN ships several model checkpoints. Use the `model_version` parameter to select one:
+
+| Value    | Description                 |
+|----------|-----------------------------|
+| `NULL`   | Default (v2.6)              |
+| `"v2"`   | Original TabPFN v2          |
+| `"v2.5"` | Intermediate release        |
+| `"v2.6"` | Latest release (same as `NULL`) |
+
+```{r model-version, eval = FALSE}
+# Use the v2.5 checkpoint
+clf_v25 <- tabpfn_classifier(
+  x             = x_train,
+  y             = y_train,
+  model_version = "v2.5",
+  n_estimators  = 2L,
+  device        = "cpu"
+)
+```
+
+## Key Hyperparameters
+
+Both `tabpfn_classifier()` and `tabpfn_regressor()` share the following hyperparameters:
+
+**`n_estimators`** (integer, default `8L`)
+
+Number of ensemble members. More estimators improve robustness at the cost of speed. For quick experiments, `2L` or `4L` work well.
+
+```{r n-estimators, eval = FALSE}
+clf <- tabpfn_classifier(x_train, y_train, n_estimators = 4L, device = "cpu")
+```
+
+**`softmax_temperature`** (double, default `0.9`)
+
+Controls the sharpness of the predictive distribution. Values below 1 make predictions more confident; values above 1 make them softer.
+
+```{r softmax-temperature, eval = FALSE}
+clf <- tabpfn_classifier(x_train, y_train, softmax_temperature = 0.7, device = "cpu")
+```
+
+**`device`** (character, default `"auto"`)
+
+Where to run computations. Options are `"auto"` (GPU if available, else CPU), `"cpu"`, and `"cuda"`.
+
+```{r device, eval = FALSE}
+# Force CPU
+clf_cpu <- tabpfn_classifier(x_train, y_train, device = "cpu")
+
+# Force GPU (requires CUDA)
+clf_gpu <- tabpfn_classifier(x_train, y_train, device = "cuda")
+```
+
+**`balance_probabilities`** (classifier only, logical, default `FALSE`)
+
+When `TRUE`, the classifier adjusts predicted probabilities to account for class imbalance.
+
+```{r balance, eval = FALSE}
+clf_bal <- tabpfn_classifier(x_train, y_train, balance_probabilities = TRUE, device = "cpu")
+```
