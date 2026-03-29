@@ -82,19 +82,19 @@ register_tabpfn_parsnip <- function() {
   parsnip::set_model_arg(
     model = "tabpfn_model", eng = "tabpfn",
     parsnip = "softmax_temperature", original = "softmax_temperature",
-    func = list(),
+    func = list(fun = "none"),
     has_submodel = FALSE
   )
   parsnip::set_model_arg(
     model = "tabpfn_model", eng = "tabpfn",
     parsnip = "device", original = "device",
-    func = list(),
+    func = list(fun = "none"),
     has_submodel = FALSE
   )
   parsnip::set_model_arg(
     model = "tabpfn_model", eng = "tabpfn",
     parsnip = "model_version", original = "model_version",
-    func = list(),
+    func = list(fun = "none"),
     has_submodel = FALSE
   )
 
