@@ -1,10 +1,17 @@
 Package: rtabpfn
 Title: R Interface to TabPFN for Tabular Data Classification and Regression
 Version: 0.1.0
-Authors@R: person("Paolo", "Sonego",
-    role = c("aut", "cre"),
-    email = "paolo.sonego@gmail.com",
-    comment = c(ORCID = "0000-0002-8576-0169"))
+Authors@R: c(
+    person("Paolo", "Sonego",
+        role = c("aut", "cre"),
+        email = "paolo.sonego@gmail.com",
+        comment = c(ORCID = "0000-0002-8576-0169")),
+    person("Claude", "Anthropic",
+        role = "ctb",
+        comment = "Primary code author (AI assistant)"),
+    person("Codex", "OpenAI",
+        role = "ctb",
+        comment = "Code author (AI assistant)"))
 URL: https://github.com/onertipaday/rtabpfn
 BugReports: https://github.com/onertipaday/rtabpfn/issues
 Description: Provides access to TabPFN (Tabular Prior-Data Fitted Networks)

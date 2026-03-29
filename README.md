@@ -130,3 +130,7 @@ TabPFN is a foundation model for tabular data trained on synthetic datasets via 
 rtabpfn is MIT licensed. See [LICENSE](LICENSE).
 
 rtabpfn does not redistribute TabPFN source code or model weights. The TabPFN Python package is installed separately and called at runtime via [reticulate](https://rstudio.github.io/reticulate/). Use of TabPFN is subject to the [Prior Labs License](https://github.com/PriorLabs/TabPFN/blob/main/LICENSE), which requires the attribution "Built with PriorLabs-TabPFN" when distributing products or services that use TabPFN.
+
+## Authorship
+
+The code in this package was written primarily by [Claude](https://claude.ai) (Anthropic) and [Codex](https://openai.com) (OpenAI). The project was conceived, directed, and validated by [Paolo Sonego](https://github.com/onertipaday).
