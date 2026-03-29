@@ -1,7 +1,12 @@
 Package: rtabpfn
 Title: R Interface to TabPFN for Tabular Data Classification and Regression
 Version: 0.1.0
-Authors@R: person("rtabpfn authors", role = c("aut", "cre"), email = "noreply@example.com")
+Authors@R: person("Paolo", "Sonego",
+    role = c("aut", "cre"),
+    email = "paolo.sonego@gmail.com",
+    comment = c(ORCID = "0000-0002-8576-0169"))
+URL: https://github.com/onertipaday/rtabpfn
+BugReports: https://github.com/onertipaday/rtabpfn/issues
 Description: Provides access to TabPFN (Tabular Prior-Data Fitted Networks)
     from R via reticulate. Supports classification and regression with a
     native R API and tidymodels integration through a custom parsnip engine.
