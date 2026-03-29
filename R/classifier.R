@@ -68,12 +68,13 @@ tabpfn_classifier <- function(x, y,
 
   wrap_python_error(clf$fit(x_np, y_np))
 
+  y <- droplevels(y)
   structure(
     list(
       model_type    = "classifier",
       model_version = version_label,
-      classes       = levels(droplevels(y)),
-      n_classes     = nlevels(droplevels(y)),
+      classes       = levels(y),
+      n_classes     = nlevels(y),
       n_features    = ncol(x),
       n_train       = nrow(x),
       feature_names = feature_names,

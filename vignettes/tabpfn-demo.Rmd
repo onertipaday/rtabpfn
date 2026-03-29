@@ -247,12 +247,14 @@ grid_long <- grid |>
   pivot_longer(c(tabpfn, rf), names_to = "model", values_to = "prob_B") |>
   mutate(model = recode(model, tabpfn = "TabPFN", rf = "Random Forest"))
 
+circles_long <- bind_rows(
+  circles |> mutate(model = "TabPFN"),
+  circles |> mutate(model = "Random Forest")
+)
+
 ggplot() +
   geom_raster(data = grid_long, aes(x1, x2, fill = prob_B), alpha = 0.65) +
-  geom_point(data = circles |> mutate(model = "TabPFN"),
-             aes(x1, x2, colour = class), size = 0.5) +
-  geom_point(data = circles |> mutate(model = "Random Forest"),
-             aes(x1, x2, colour = class), size = 0.5) +
+  geom_point(data = circles_long, aes(x1, x2, colour = class), size = 0.5) +
   scale_fill_gradient2(low = "#d73027", mid = "white", high = "#4575b4",
                        midpoint = 0.5, name = "P(B)") +
   scale_colour_manual(values = c(A = "#d73027", B = "#4575b4")) +
