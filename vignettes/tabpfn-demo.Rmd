@@ -1,0 +1,379 @@
+---
+title: "TabPFN Demo: R Translation of the Python Hands-On Notebook"
+output: rmarkdown::html_vignette
+knitr:
+  opts_chunk:
+    dev: "pdf"
+vignette: >
+  %\VignetteIndexEntry{TabPFN Demo}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+tabpfn_ok <- reticulate::py_module_available("tabpfn") &&
+  requireNamespace("mlbench",  quietly = TRUE) &&
+  requireNamespace("ranger",   quietly = TRUE) &&
+  requireNamespace("ggplot2",  quietly = TRUE) &&
+  requireNamespace("tidyr",    quietly = TRUE) &&
+  requireNamespace("yardstick", quietly = TRUE)
+
+knitr::opts_chunk$set(
+  collapse  = TRUE,
+  comment   = "#>",
+  dev       = "pdf",
+  fig.width = 7,
+  fig.height = 5,
+  eval      = tabpfn_ok
+)
+```
+
+This vignette is a direct R translation of the
+[TabPFN Hands-On Demo Python notebook](https://github.com/PriorLabs/TabPFN/blob/main/TabPFN_Demo_Local.ipynb),
+covering the same topics in order: classification, regression, decision
+boundaries, curve fitting, and uncertainty quantification — all using the
+`rtabpfn` package and standard tidyverse tools.
+
+```{r pkgs, message = FALSE}
+library(rtabpfn)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(rsample)
+library(yardstick)
+library(ranger)
+library(mlbench)
+library(tidyr)
+```
+
+---
+
+## 1  Classification: Parkinson's Disease Detection
+
+The notebook uses the UCI Parkinson's Disease dataset: 195 voice measurements
+from 31 people (23 with Parkinson's). The task is binary classification
+evaluated with ROC AUC.
+
+```{r pk-load}
+pk_url <- paste0(
+  "https://archive.ics.uci.edu/ml/machine-learning-databases/",
+  "parkinsons/parkinsons.data"
+)
+pk  <- read.csv(pk_url)
+X_pk <- pk |> select(-name, -status)
+y_pk <- factor(pk$status, levels = c(0, 1), labels = c("healthy", "parkinsons"))
+cat("Dimensions:", nrow(X_pk), "x", ncol(X_pk), "\nClass balance:", table(y_pk), "\n")
+```
+
+### Quick train / test split
+
+```{r pk-split}
+set.seed(42)
+split   <- initial_split(bind_cols(X_pk, status = y_pk), prop = 0.8,
+                         strata = status)
+pk_tr   <- training(split);  pk_te <- testing(split)
+X_tr    <- pk_tr |> select(-status); y_tr <- pk_tr$status
+X_te    <- pk_te |> select(-status); y_te <- pk_te$status
+```
+
+```{r pk-fit}
+clf   <- tabpfn_classifier(X_tr, y_tr, n_estimators = 8L, device = "cpu")
+probs <- predict(clf, X_te, type = "prob")
+
+auc <- roc_auc(
+  bind_cols(truth = y_te, probs),
+  truth = truth, .pred_parkinsons, event_level = "second"
+)
+cat("TabPFN ROC AUC:", round(auc$.estimate, 4), "\n")
+```
+
+### 10-fold cross-validation comparison
+
+```{r pk-cv, message = FALSE}
+pk_df <- bind_cols(X_pk, status = y_pk)
+folds <- vfold_cv(pk_df, v = 10, strata = status)
+
+cv_clf <- lapply(folds$splits, function(spl) {
+  tr  <- training(spl);  te <- testing(spl)
+  Xtr <- tr |> select(-status); ytr <- tr$status
+  Xte <- te |> select(-status); yte <- te$status
+
+  # TabPFN
+  t_clf <- tabpfn_classifier(Xtr, ytr, n_estimators = 4L, device = "cpu")
+  p_t   <- predict(t_clf, Xte, type = "prob")
+  auc_t <- roc_auc(bind_cols(truth = yte, p_t), truth, .pred_parkinsons,
+                   event_level = "second")$.estimate
+
+  # Random Forest (ranger)
+  rf_fit <- ranger(status ~ ., data = tr, probability = TRUE, seed = 42,
+                   verbose = FALSE)
+  p_rf   <- as_tibble(predict(rf_fit, te)$predictions)
+  auc_rf <- roc_auc(bind_cols(truth = yte, p_rf), truth, parkinsons,
+                    event_level = "second")$.estimate
+
+  tibble(TabPFN = auc_t, `Random Forest` = auc_rf)
+})
+
+cv_clf_df <- bind_rows(cv_clf) |>
+  summarise(across(everything(), mean)) |>
+  pivot_longer(everything(), names_to = "Model", values_to = "ROC AUC")
+
+ggplot(cv_clf_df, aes(x = reorder(Model, `ROC AUC`), y = `ROC AUC`, fill = Model)) +
+  geom_col(show.legend = FALSE, width = 0.5) +
+  geom_text(aes(label = round(`ROC AUC`, 3)), vjust = -0.4, size = 3.5) +
+  scale_y_continuous(limits = c(0, 1.05)) +
+  labs(
+    title    = "Parkinson's classification — 10-fold CV ROC AUC",
+    subtitle = "Higher is better",
+    x = NULL, y = "ROC AUC"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+---
+
+## 2  Regression: Boston Housing
+
+Predict median house values (`medv`) from 13 socio-economic features.
+The dataset mirrors the one used in the Python notebook.
+
+```{r bos-load}
+data(BostonHousing)
+X_bos <- BostonHousing |>
+  select(-medv) |>
+  mutate(across(where(is.factor), as.numeric))
+y_bos <- BostonHousing$medv
+cat("Dimensions:", nrow(X_bos), "x", ncol(X_bos), "\n")
+```
+
+### Quick train / test split (67 / 33)
+
+```{r bos-fit}
+set.seed(42)
+idx  <- sample(nrow(X_bos), floor(0.67 * nrow(X_bos)))
+Xtr  <- X_bos[idx,  ]; ytr <- y_bos[idx]
+Xte  <- X_bos[-idx, ]; yte <- y_bos[-idx]
+
+reg      <- tabpfn_regressor(Xtr, ytr, n_estimators = 8L, device = "cpu")
+preds    <- predict(reg, Xte)
+
+cat(sprintf(
+  "TabPFN  RMSE: %.4f   R\u00b2: %.4f\n",
+  rmse_vec(yte, preds$.pred),
+  cor(yte, preds$.pred)^2
+))
+```
+
+### 10-fold cross-validation comparison
+
+```{r bos-cv, message = FALSE}
+bos_df    <- bind_cols(X_bos, medv = y_bos)
+folds_bos <- vfold_cv(bos_df, v = 10)
+
+cv_reg <- lapply(folds_bos$splits, function(spl) {
+  tr   <- training(spl);  te <- testing(spl)
+  Xtr_ <- tr |> select(-medv); ytr_ <- tr$medv
+  Xte_ <- te |> select(-medv); yte_ <- te$medv
+
+  # TabPFN
+  rg     <- tabpfn_regressor(Xtr_, ytr_, n_estimators = 4L, device = "cpu")
+  p_t    <- predict(rg, Xte_)$.pred
+  rsq_t  <- cor(yte_, p_t)^2
+
+  # Random Forest
+  rf_fit  <- ranger(medv ~ ., data = tr, seed = 42, verbose = FALSE)
+  p_rf    <- predict(rf_fit, te)$predictions
+  rsq_rf  <- cor(yte_, p_rf)^2
+
+  tibble(TabPFN = rsq_t, `Random Forest` = rsq_rf)
+})
+
+cv_reg_df <- bind_rows(cv_reg) |>
+  summarise(across(everything(), mean)) |>
+  pivot_longer(everything(), names_to = "Model", values_to = "R2")
+
+ggplot(cv_reg_df, aes(x = reorder(Model, R2), y = R2, fill = Model)) +
+  geom_col(show.legend = FALSE, width = 0.5) +
+  geom_text(aes(label = round(R2, 3)), vjust = -0.4, size = 3.5) +
+  scale_y_continuous(limits = c(0, 1.05)) +
+  labs(
+    title    = "Boston Housing regression — 10-fold CV R\u00b2",
+    subtitle = "Variance explained — higher is better",
+    x = NULL, y = "R\u00b2"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+---
+
+## 3  Decision Boundaries: Concentric Circles
+
+Two interleaved classes arranged in concentric rings expose non-linear
+behaviour in classifiers — the same toy problem used in the Python notebook.
+
+```{r circles-data}
+set.seed(42)
+
+gen_ring <- function(n, r, noise = 0.1) {
+  ang <- runif(n, 0, 2 * pi)
+  tibble(x1 = r * cos(ang) + rnorm(n, 0, noise),
+         x2 = r * sin(ang) + rnorm(n, 0, noise))
+}
+
+circles <- bind_rows(
+  bind_rows(gen_ring(50, 1), gen_ring(100, 2), gen_ring(200, 4)) |>
+    mutate(class = "A"),
+  bind_rows(gen_ring(50, 1.3), gen_ring(100, 2.3), gen_ring(200, 4.3)) |>
+    mutate(class = "B")
+) |> mutate(class = factor(class))
+```
+
+```{r circles-fit}
+clf_circ <- tabpfn_classifier(circles |> select(x1, x2), circles$class,
+                               n_estimators = 4L, device = "cpu")
+
+rf_circ  <- ranger(class ~ x1 + x2, data = circles, probability = TRUE,
+                   seed = 42, verbose = FALSE)
+
+# Prediction grid
+grid <- expand.grid(
+  x1 = seq(min(circles$x1) - 0.5, max(circles$x1) + 0.5, length.out = 80),
+  x2 = seq(min(circles$x2) - 0.5, max(circles$x2) + 0.5, length.out = 80)
+)
+grid$tabpfn <- predict(clf_circ, grid, type = "prob")$.pred_B
+grid$rf     <- predict(rf_circ,  grid)$predictions[, "B"]
+
+grid_long <- grid |>
+  pivot_longer(c(tabpfn, rf), names_to = "model", values_to = "prob_B") |>
+  mutate(model = recode(model, tabpfn = "TabPFN", rf = "Random Forest"))
+
+ggplot() +
+  geom_raster(data = grid_long, aes(x1, x2, fill = prob_B), alpha = 0.65) +
+  geom_point(data = circles |> mutate(model = "TabPFN"),
+             aes(x1, x2, colour = class), size = 0.5) +
+  geom_point(data = circles |> mutate(model = "Random Forest"),
+             aes(x1, x2, colour = class), size = 0.5) +
+  scale_fill_gradient2(low = "#d73027", mid = "white", high = "#4575b4",
+                       midpoint = 0.5, name = "P(B)") +
+  scale_colour_manual(values = c(A = "#d73027", B = "#4575b4")) +
+  facet_wrap(~model) +
+  labs(title = "Decision boundaries — concentric circles",
+       x = "x\u2081", y = "x\u2082", colour = "Class") +
+  coord_equal() +
+  theme_minimal(base_size = 11)
+```
+
+---
+
+## 4  Regression Curve Fitting: sin(x) + x/10
+
+A smooth 1-D function sampled at 40 points. The goal is to compare how well
+each model captures the underlying shape, especially outside the training
+distribution's density.
+
+```{r sin-data}
+set.seed(42)
+N        <- 40
+x_train  <- matrix(seq(0, 20, length.out = N), ncol = 1)
+y_train  <- sin(x_train) + x_train / 10
+x_test   <- matrix(seq(0, 20, length.out = 200), ncol = 1)
+```
+
+```{r sin-fit}
+reg_sin <- tabpfn_regressor(as.data.frame(x_train), as.vector(y_train),
+                             n_estimators = 8L, device = "cpu")
+rf_sin  <- ranger(y ~ x,
+                  data = tibble(x = x_train[, 1], y = y_train[, 1]),
+                  seed = 42, verbose = FALSE)
+
+pred_t  <- predict(reg_sin, as.data.frame(x_test))$.pred
+pred_rf <- predict(rf_sin, tibble(x = x_test[, 1]))$predictions
+y_true  <- sin(x_test) + x_test / 10   # ground truth on test grid
+
+curves <- tibble(
+  x = rep(x_test[, 1], 3),
+  y = c(pred_t, pred_rf, y_true[, 1]),
+  source = rep(c("TabPFN", "Random Forest", "True function"), each = 200)
+)
+train_pts <- tibble(x = x_train[, 1], y = y_train[, 1])
+
+ggplot() +
+  geom_line(data = curves,
+            aes(x, y, colour = source, linewidth = source, linetype = source)) +
+  geom_point(data = train_pts, aes(x, y), colour = "black", size = 2) +
+  scale_colour_manual(
+    values = c("TabPFN" = "#4575b4", "Random Forest" = "#d73027",
+               "True function" = "grey40")
+  ) +
+  scale_linewidth_manual(
+    values = c("TabPFN" = 1, "Random Forest" = 1, "True function" = 0.6)
+  ) +
+  scale_linetype_manual(
+    values = c("TabPFN" = "solid", "Random Forest" = "solid",
+               "True function" = "dashed")
+  ) +
+  labs(
+    title    = "1-D regression: sin(x) + x/10",
+    subtitle = "Black points = training data",
+    x = "x", y = "y",
+    colour = NULL, linewidth = NULL, linetype = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+## 5  Uncertainty Quantification
+
+TabPFN natively estimates the full predictive distribution. We fit it to
+data with heteroscedastic (growing) noise and plot quantile prediction
+intervals — the same demonstration from the Python notebook's final section.
+
+```{r het-data}
+set.seed(42)
+n_pts   <- 200
+x_het   <- matrix(seq(0, 100, length.out = n_pts), ncol = 1)
+y_true_het <- 0.8 * x_het[, 1]
+y_noisy    <- y_true_het + rnorm(n_pts, 0, 0.1 * x_het[, 1])
+
+x_test_het <- matrix(seq(0, 100, length.out = 120), ncol = 1)
+```
+
+```{r het-fit}
+reg_het <- tabpfn_regressor(as.data.frame(x_het), y_noisy,
+                             n_estimators = 4L, device = "cpu")
+
+q_levels <- c(0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95)
+q_preds  <- predict(reg_het, as.data.frame(x_test_het),
+                    type = "quantile", quantiles = q_levels)
+
+# Pivot to wide format for ribbon plotting
+q_wide <- q_preds |>
+  mutate(q_label = paste0("q", sprintf("%03d", as.integer(.quantile * 100)))) |>
+  pivot_wider(id_cols = .row, names_from = q_label, values_from = .pred) |>
+  mutate(x = x_test_het[.row, 1])
+
+ggplot(q_wide, aes(x = x)) +
+  geom_ribbon(aes(ymin = q005, ymax = q095), fill = "#4575b4", alpha = 0.15) +
+  geom_ribbon(aes(ymin = q010, ymax = q090), fill = "#4575b4", alpha = 0.20) +
+  geom_ribbon(aes(ymin = q025, ymax = q075), fill = "#4575b4", alpha = 0.30) +
+  geom_line(aes(y = q050), colour = "#4575b4", linewidth = 1, linetype = "dashed") +
+  geom_line(aes(x = x_het[, 1], y = y_true_het), colour = "black", linewidth = 0.8) +
+  geom_point(aes(x = x_het[, 1], y = y_noisy), colour = "#d73027",
+             size = 0.8, alpha = 0.4) +
+  labs(
+    title    = "TabPFN quantile regression — heteroscedastic noise",
+    subtitle = paste(
+      "Ribbons: 5\u201395%, 10\u201390%, 25\u201375% intervals",
+      "| dashed = median | black = true line | red = training data"
+    ),
+    x = "x", y = "y"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+The widening intervals correctly capture the increasing variance: for small
+`x` the model is confident, while for large `x` the uncertainty grows
+proportionally to the noise scale — exactly the heteroscedastic structure
+injected into the data.

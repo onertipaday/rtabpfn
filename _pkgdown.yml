@@ -25,3 +25,6 @@ articles:
     contents:
       - getting-started
       - tidymodels-integration
+  - title: "Demo"
+    contents:
+      - tabpfn-demo
