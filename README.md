@@ -133,4 +133,4 @@ rtabpfn does not redistribute TabPFN source code or model weights. The TabPFN Py
 
 ## Authorship
 
-The code in this package was written primarily by [Claude](https://claude.ai) (Anthropic) and [Codex](https://openai.com) (OpenAI). The project was conceived, directed, and validated by [Paolo Sonego](https://github.com/onertipaday).
+The code in this package was written primarily by [Claude](https://claude.ai) (Anthropic). The project was conceived, directed, and validated by [Paolo](https://github.com/onertipaday).
