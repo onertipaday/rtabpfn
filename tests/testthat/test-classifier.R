@@ -47,15 +47,15 @@ test_that("tabpfn_classifier stores params correctly", {
 test_that("predict.tabpfn_classifier returns class predictions as tibble", {
   skip_if_no_tabpfn()
   fit <- tabpfn_classifier(
-    iris[1:100, 1:4], iris$Species[1:100],
+    iris[1:120, 1:4], iris$Species[1:120],
     n_estimators = 2L, device = "cpu"
   )
-  preds <- predict(fit, iris[101:150, 1:4])
+  preds <- predict(fit, iris[121:150, 1:4])
   expect_s3_class(preds, "tbl_df")
   expect_named(preds, ".pred_class")
   expect_s3_class(preds$.pred_class, "factor")
   expect_equal(levels(preds$.pred_class), levels(iris$Species))
-  expect_equal(nrow(preds), 50L)
+  expect_equal(nrow(preds), 30L)
 })
 
 test_that("predict.tabpfn_classifier returns probabilities as tibble", {
