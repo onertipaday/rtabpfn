@@ -71,28 +71,30 @@ register_tabpfn_parsnip <- function() {
                           mode = "regression")
 
   # Model args
+  # func points to a dials parameter for tuning support; use dials::trees() for
+  # n_estimators (semantically equivalent), and list() for params with no dials counterpart.
   parsnip::set_model_arg(
     model = "tabpfn_model", eng = "tabpfn",
     parsnip = "n_estimators", original = "n_estimators",
-    func = list(pkg = "rtabpfn", fun = "n_estimators"),
+    func = list(pkg = "dials", fun = "trees"),
     has_submodel = FALSE
   )
   parsnip::set_model_arg(
     model = "tabpfn_model", eng = "tabpfn",
     parsnip = "softmax_temperature", original = "softmax_temperature",
-    func = list(pkg = "rtabpfn", fun = "softmax_temperature"),
+    func = list(),
     has_submodel = FALSE
   )
   parsnip::set_model_arg(
     model = "tabpfn_model", eng = "tabpfn",
     parsnip = "device", original = "device",
-    func = list(pkg = "rtabpfn", fun = "device"),
+    func = list(),
     has_submodel = FALSE
   )
   parsnip::set_model_arg(
     model = "tabpfn_model", eng = "tabpfn",
     parsnip = "model_version", original = "model_version",
-    func = list(pkg = "rtabpfn", fun = "model_version"),
+    func = list(),
     has_submodel = FALSE
   )
 
