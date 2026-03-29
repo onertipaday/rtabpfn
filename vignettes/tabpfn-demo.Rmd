@@ -359,9 +359,10 @@ ggplot(q_wide, aes(x = x)) +
   geom_ribbon(aes(ymin = q010, ymax = q090), fill = "#4575b4", alpha = 0.20) +
   geom_ribbon(aes(ymin = q025, ymax = q075), fill = "#4575b4", alpha = 0.30) +
   geom_line(aes(y = q050), colour = "#4575b4", linewidth = 1, linetype = "dashed") +
-  geom_line(aes(x = x_het[, 1], y = y_true_het), colour = "black", linewidth = 0.8) +
-  geom_point(aes(x = x_het[, 1], y = y_noisy), colour = "#d73027",
-             size = 0.8, alpha = 0.4) +
+  geom_line(data = tibble(x = x_het[, 1], y = y_true_het),
+            aes(x = x, y = y), colour = "black", linewidth = 0.8) +
+  geom_point(data = tibble(x = x_het[, 1], y = y_noisy),
+             aes(x = x, y = y), colour = "#d73027", size = 0.8, alpha = 0.4) +
   labs(
     title    = "TabPFN quantile regression — heteroscedastic noise",
     subtitle = paste(
