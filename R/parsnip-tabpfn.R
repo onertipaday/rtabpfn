@@ -70,6 +70,18 @@ register_tabpfn_parsnip <- function() {
   parsnip::set_dependency("tabpfn_model", eng = "tabpfn", pkg = "rtabpfn",
                           mode = "regression")
 
+  # Encoding: TabPFN accepts raw x/y — no dummy encoding or intercept needed
+  encoding_opts <- list(
+    predictor_indicators = "none",
+    compute_intercept    = FALSE,
+    remove_intercept     = FALSE,
+    allow_sparse_x       = FALSE
+  )
+  parsnip::set_encoding("tabpfn_model", mode = "classification", eng = "tabpfn",
+                        options = encoding_opts)
+  parsnip::set_encoding("tabpfn_model", mode = "regression",     eng = "tabpfn",
+                        options = encoding_opts)
+
   # Model args
   # func points to a dials parameter for tuning support; use dials::trees() for
   # n_estimators (semantically equivalent), and list() for params with no dials counterpart.
