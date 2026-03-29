@@ -1,0 +1,27 @@
+url: ~
+
+template:
+  bootstrap: 5
+
+reference:
+  - title: "Core API"
+    desc: "Fit and predict with TabPFN"
+    contents:
+      - tabpfn_classifier
+      - tabpfn_regressor
+
+  - title: "tidymodels Integration"
+    desc: "Use TabPFN with parsnip and workflows"
+    contents:
+      - tabpfn_model
+
+  - title: "Setup"
+    desc: "Install and configure the Python backend"
+    contents:
+      - install_tabpfn
+
+articles:
+  - title: "Guides"
+    contents:
+      - getting-started
+      - tidymodels-integration
