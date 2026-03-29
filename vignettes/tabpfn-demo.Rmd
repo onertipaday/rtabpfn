@@ -31,7 +31,7 @@ knitr::opts_chunk$set(
 This vignette is a direct R translation of the
 [TabPFN Hands-On Demo Python notebook](https://github.com/PriorLabs/TabPFN/blob/main/TabPFN_Demo_Local.ipynb),
 covering the same topics in order: classification, regression, decision
-boundaries, curve fitting, and uncertainty quantification — all using the
+boundaries, curve fitting, and uncertainty quantification  -  all using the
 `rtabpfn` package and standard tidyverse tools.
 
 ```{r pkgs, message = FALSE}
@@ -123,7 +123,7 @@ ggplot(cv_clf_df, aes(x = reorder(Model, `ROC AUC`), y = `ROC AUC`, fill = Model
   geom_text(aes(label = round(`ROC AUC`, 3)), vjust = -0.4, size = 3.5) +
   scale_y_continuous(limits = c(0, 1.05)) +
   labs(
-    title    = "Parkinson's classification — 10-fold CV ROC AUC",
+    title    = "Parkinson's classification  -  10-fold CV ROC AUC",
     subtitle = "Higher is better",
     x = NULL, y = "ROC AUC"
   ) +
@@ -158,7 +158,7 @@ reg      <- tabpfn_regressor(Xtr, ytr, n_estimators = 8L, device = "cpu")
 preds    <- predict(reg, Xte)
 
 cat(sprintf(
-  "TabPFN  RMSE: %.4f   R\u00b2: %.4f\n",
+  "TabPFN  RMSE: %.4f   R2: %.4f\n",
   rmse_vec(yte, preds$.pred),
   cor(yte, preds$.pred)^2
 ))
@@ -197,9 +197,9 @@ ggplot(cv_reg_df, aes(x = reorder(Model, R2), y = R2, fill = Model)) +
   geom_text(aes(label = round(R2, 3)), vjust = -0.4, size = 3.5) +
   scale_y_continuous(limits = c(0, 1.05)) +
   labs(
-    title    = "Boston Housing regression — 10-fold CV R\u00b2",
-    subtitle = "Variance explained — higher is better",
-    x = NULL, y = "R\u00b2"
+    title    = "Boston Housing regression  -  10-fold CV R2",
+    subtitle = "Variance explained  -  higher is better",
+    x = NULL, y = "R2"
   ) +
   theme_minimal(base_size = 12)
 ```
@@ -209,7 +209,7 @@ ggplot(cv_reg_df, aes(x = reorder(Model, R2), y = R2, fill = Model)) +
 ## 3  Decision Boundaries: Concentric Circles
 
 Two interleaved classes arranged in concentric rings expose non-linear
-behaviour in classifiers — the same toy problem used in the Python notebook.
+behaviour in classifiers  -  the same toy problem used in the Python notebook.
 
 ```{r circles-data}
 set.seed(42)
@@ -257,8 +257,8 @@ ggplot() +
                        midpoint = 0.5, name = "P(B)") +
   scale_colour_manual(values = c(A = "#d73027", B = "#4575b4")) +
   facet_wrap(~model) +
-  labs(title = "Decision boundaries — concentric circles",
-       x = "x\u2081", y = "x\u2082", colour = "Class") +
+  labs(title = "Decision boundaries  -  concentric circles",
+       x = "x1", y = "x2", colour = "Class") +
   coord_equal() +
   theme_minimal(base_size = 11)
 ```
@@ -328,7 +328,7 @@ ggplot() +
 
 TabPFN natively estimates the full predictive distribution. We fit it to
 data with heteroscedastic (growing) noise and plot quantile prediction
-intervals — the same demonstration from the Python notebook's final section.
+intervals  -  the same demonstration from the Python notebook's final section.
 
 ```{r het-data}
 set.seed(42)
@@ -364,9 +364,9 @@ ggplot(q_wide, aes(x = x)) +
   geom_point(data = tibble(x = x_het[, 1], y = y_noisy),
              aes(x = x, y = y), colour = "#d73027", size = 0.8, alpha = 0.4) +
   labs(
-    title    = "TabPFN quantile regression — heteroscedastic noise",
+    title    = "TabPFN quantile regression  -  heteroscedastic noise",
     subtitle = paste(
-      "Ribbons: 5\u201395%, 10\u201390%, 25\u201375% intervals",
+      "Ribbons: 5-95%, 10-90%, 25-75% intervals",
       "| dashed = median | black = true line | red = training data"
     ),
     x = "x", y = "y"
@@ -376,5 +376,5 @@ ggplot(q_wide, aes(x = x)) +
 
 The widening intervals correctly capture the increasing variance: for small
 `x` the model is confident, while for large `x` the uncertainty grows
-proportionally to the noise scale — exactly the heteroscedastic structure
+proportionally to the noise scale  -  exactly the heteroscedastic structure
 injected into the data.
