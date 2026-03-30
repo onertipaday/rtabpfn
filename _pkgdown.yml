@@ -10,6 +10,14 @@ reference:
       - tabpfn_classifier
       - tabpfn_regressor
 
+  - title: "Embeddings"
+    desc: "Extract and visualise TabPFN embeddings"
+    contents:
+      - tabpfn_embeddings
+      - tabpfn_embeddings_cv
+      - extract_embeddings
+      - plot_embeddings
+
   - title: "tidymodels Integration"
     desc: "Use TabPFN with parsnip and workflows"
     contents:
@@ -25,6 +33,9 @@ articles:
     contents:
       - getting-started
       - tidymodels-integration
+  - title: "Embeddings"
+    contents:
+      - embeddings
   - title: "Demo"
     contents:
       - tabpfn-demo
