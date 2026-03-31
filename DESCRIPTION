@@ -1,6 +1,6 @@
 Package: rtabpfn
 Title: R Interface to TabPFN for Tabular Data Classification and Regression
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
     person("Paolo", "Sonego",
         role = c("aut", "cre"),
