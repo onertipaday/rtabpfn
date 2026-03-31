@@ -27,6 +27,7 @@
 #'                 return_coords = TRUE)
 #' }
 #'
+#' @importFrom rlang .data
 #' @export
 plot_embeddings <- function(embeddings,
                              labels = NULL,
