@@ -76,3 +76,72 @@ test_that("tabpfn_embeddings rejects invalid aggregate", {
     "aggregate"
   )
 })
+
+# --- tabpfn_embeddings_cv ---------------------------------------------------
+
+test_that("tabpfn_embeddings_cv returns embeddings for all samples (classifier)", {
+  skip_if_no_tabpfn()
+  emb <- tabpfn_embeddings_cv(
+    iris[1:120, 1:4], iris$Species[1:120],
+    n_folds = 3L, mode = "classification",
+    n_estimators = 2L, device = "cpu"
+  )
+  expect_true(is.matrix(emb))
+  expect_equal(nrow(emb), 120L)
+  expect_true(ncol(emb) > 0L)
+})
+
+test_that("tabpfn_embeddings_cv works for regression", {
+  skip_if_no_tabpfn()
+  emb <- tabpfn_embeddings_cv(
+    mtcars[, c("cyl", "disp", "hp", "wt")], mtcars$mpg,
+    n_folds = 3L, mode = "regression",
+    n_estimators = 2L, device = "cpu"
+  )
+  expect_true(is.matrix(emb))
+  expect_equal(nrow(emb), 32L)
+})
+
+test_that("tabpfn_embeddings_cv accepts rsample folds", {
+  skip_if_no_tabpfn()
+  skip_if_not_installed("rsample")
+  folds <- rsample::vfold_cv(iris[1:120, ], v = 3)
+  emb <- tabpfn_embeddings_cv(
+    iris[1:120, 1:4], iris$Species[1:120],
+    folds = folds, mode = "classification",
+    n_estimators = 2L, device = "cpu"
+  )
+  expect_true(is.matrix(emb))
+  expect_equal(nrow(emb), 120L)
+})
+
+test_that("tabpfn_embeddings_cv accepts list-of-indices folds", {
+  skip_if_no_tabpfn()
+  n <- 120L
+  idx <- sample(rep(1:3, length.out = n))
+  custom_folds <- lapply(1:3, function(k) {
+    list(train = which(idx != k), validation = which(idx == k))
+  })
+  emb <- tabpfn_embeddings_cv(
+    iris[1:n, 1:4], iris$Species[1:n],
+    folds = custom_folds, mode = "classification",
+    n_estimators = 2L, device = "cpu"
+  )
+  expect_true(is.matrix(emb))
+  expect_equal(nrow(emb), n)
+})
+
+test_that("tabpfn_embeddings_cv respects aggregate parameter", {
+  skip_if_no_tabpfn()
+  emb_concat <- tabpfn_embeddings_cv(
+    iris[1:120, 1:4], iris$Species[1:120],
+    n_folds = 3L, aggregate = "concat", mode = "classification",
+    n_estimators = 2L, device = "cpu"
+  )
+  emb_mean <- tabpfn_embeddings_cv(
+    iris[1:120, 1:4], iris$Species[1:120],
+    n_folds = 3L, aggregate = "mean", mode = "classification",
+    n_estimators = 2L, device = "cpu"
+  )
+  expect_equal(ncol(emb_concat), 2L * ncol(emb_mean))
+})
