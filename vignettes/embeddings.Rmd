@@ -1,0 +1,166 @@
+---
+title: "TabPFN Embeddings"
+output: rmarkdown::html_vignette
+knitr:
+  opts_chunk:
+    dev: "pdf"
+vignette: >
+  %\VignetteIndexEntry{TabPFN Embeddings}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = reticulate::py_module_available("tabpfn") &&
+         requireNamespace("ggplot2", quietly = TRUE) &&
+         requireNamespace("Rtsne",   quietly = TRUE) &&
+         requireNamespace("uwot",    quietly = TRUE)
+)
+```
+
+TabPFN's transformer backbone produces rich internal representations for each
+observation. The rtabpfn package exposes these representations through three
+functions:
+
+- `tabpfn_embeddings()` -- extract embeddings from a fitted model.
+- `tabpfn_embeddings_cv()` -- cross-validated embeddings so every sample is
+  embedded by a model that never saw it during training.
+- `plot_embeddings()` -- reduce to 2-D with t-SNE or UMAP and visualise with
+  ggplot2.
+
+These embeddings are useful for exploratory analysis, clustering, or as
+features for a downstream model.
+
+```{r library}
+library(rtabpfn)
+```
+
+## Vanilla Embeddings (Classification)
+
+Fit a classifier on the iris data and extract embeddings for the test
+observations. The `aggregate` argument controls how embeddings from multiple
+ensemble members are combined.
+
+```{r embed-clf}
+clf <- tabpfn_classifier(
+  x            = iris[, 1:4],
+  y            = iris$Species,
+  n_estimators = 4L,
+  device       = "cpu"
+)
+
+emb_mean   <- tabpfn_embeddings(clf, iris[, 1:4], aggregate = "mean")
+emb_concat <- tabpfn_embeddings(clf, iris[, 1:4], aggregate = "concat")
+emb_raw    <- tabpfn_embeddings(clf, iris[, 1:4], aggregate = "none")
+
+dim(emb_mean)    # (n_samples, embedding_dim)
+dim(emb_concat)  # (n_samples, n_estimators * embedding_dim)
+dim(emb_raw)     # (n_estimators, n_samples, embedding_dim)
+```
+
+## Vanilla Embeddings (Regression)
+
+The same interface works for regressors.
+
+```{r embed-reg}
+reg <- tabpfn_regressor(
+  x            = mtcars[, -1],
+  y            = mtcars$mpg,
+  n_estimators = 4L,
+  device       = "cpu"
+)
+
+emb_reg <- tabpfn_embeddings(reg, mtcars[, -1])
+dim(emb_reg)
+```
+
+## Cross-Validated Embeddings
+
+`tabpfn_embeddings_cv()` fits a fresh model on each fold and embeds only the
+held-out samples. This avoids information leakage when the embeddings are used
+as features for a second-stage model.
+
+### Auto-generated folds
+
+```{r cv-auto}
+set.seed(42)
+emb_cv <- tabpfn_embeddings_cv(
+  x            = iris[, 1:4],
+  y            = iris$Species,
+  n_folds      = 5L,
+  n_estimators = 4L,
+  device       = "cpu"
+)
+dim(emb_cv)
+```
+
+### rsample folds
+
+You can pass an `rsample` rset object for precise control over the splits.
+
+```{r cv-rsample}
+library(rsample)
+
+folds <- vfold_cv(iris, v = 5)
+emb_cv2 <- tabpfn_embeddings_cv(
+  x            = iris[, 1:4],
+  y            = iris$Species,
+  folds        = folds,
+  n_estimators = 4L,
+  device       = "cpu"
+)
+dim(emb_cv2)
+```
+
+## Visualising Embeddings
+
+`plot_embeddings()` reduces the embedding matrix to two dimensions with t-SNE
+or UMAP and returns a ggplot2 scatter plot. Both methods are shown side by side
+below.
+
+```{r viz, fig.width = 6, fig.height = 4}
+p_tsne <- plot_embeddings(emb_cv, labels = iris$Species, method = "tsne")
+p_umap <- plot_embeddings(emb_cv, labels = iris$Species, method = "umap")
+
+p_tsne
+p_umap
+```
+
+## Extracting Coordinates
+
+Pass `return_coords = TRUE` to get both the plot and the underlying 2-D
+coordinates as a tibble.
+
+```{r coords}
+res <- plot_embeddings(
+  emb_cv,
+  labels        = iris$Species,
+  method        = "umap",
+  return_coords = TRUE
+)
+
+head(res$coords)
+res$plot
+```
+
+## From a Parsnip Workflow
+
+If you are using the tidymodels framework, `extract_embeddings()` can pull
+embeddings directly from a fitted parsnip model or workflow.
+
+```{r workflow}
+library(parsnip)
+library(workflows)
+library(recipes)
+
+spec <- tabpfn_model(mode = "classification", n_estimators = 4L, device = "cpu")
+rec  <- recipe(Species ~ ., data = iris)
+wf   <- workflow() |> add_recipe(rec) |> add_model(spec)
+
+wf_fit <- fit(wf, data = iris)
+emb_wf <- extract_embeddings(wf_fit, iris[1:10, 1:4])
+dim(emb_wf)
+```
