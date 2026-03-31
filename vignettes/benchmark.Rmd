@@ -48,10 +48,12 @@ library(tidyr)
 library(dplyr)
 ```
 
-## Helper Function
+## Helper Functions
 
 A small wrapper that runs 10-fold CV for a given model spec and recipe,
-then collects the metric summaries.
+then collects the metric summaries. We also define a helper that builds
+two recipes: a plain one for TabPFN (which handles factors natively) and
+one with dummy encoding for XGBoost (which requires numeric input).
 
 ```{r helper}
 run_cv <- function(spec, rec, folds, metrics) {
@@ -61,6 +63,14 @@ run_cv <- function(spec, rec, folds, metrics) {
   res <- fit_resamples(wf, resamples = folds, metrics = metrics,
                        control = control_resamples(save_pred = FALSE))
   collect_metrics(res)
+}
+
+make_recipes <- function(formula, data) {
+  base <- recipe(formula, data = data)
+  list(
+    tabpfn = base,
+    xgb    = base |> step_dummy(all_nominal_predictors())
+  )
 }
 ```
 
@@ -102,12 +112,12 @@ iono <- Ionosphere[, -2]  # drop constant column V2
 
 set.seed(42)
 iono_folds <- vfold_cv(iono, v = 10, strata = Class)
-iono_rec   <- recipe(Class ~ ., data = iono)
+iono_recs  <- make_recipes(Class ~ ., data = iono)
 clf_metrics <- metric_set(accuracy, roc_auc)
 
-iono_tabpfn <- run_cv(tabpfn_clf, iono_rec, iono_folds, clf_metrics) |>
+iono_tabpfn <- run_cv(tabpfn_clf, iono_recs$tabpfn, iono_folds, clf_metrics) |>
   mutate(model = "TabPFN")
-iono_xgb <- run_cv(xgb_clf, iono_rec, iono_folds, clf_metrics) |>
+iono_xgb <- run_cv(xgb_clf, iono_recs$xgb, iono_folds, clf_metrics) |>
   mutate(model = "XGBoost")
 iono_results <- bind_rows(iono_tabpfn, iono_xgb) |>
   mutate(dataset = "Ionosphere")
@@ -123,11 +133,11 @@ data(PimaIndiansDiabetes)
 
 set.seed(42)
 pima_folds <- vfold_cv(PimaIndiansDiabetes, v = 10, strata = diabetes)
-pima_rec   <- recipe(diabetes ~ ., data = PimaIndiansDiabetes)
+pima_recs  <- make_recipes(diabetes ~ ., data = PimaIndiansDiabetes)
 
-pima_tabpfn <- run_cv(tabpfn_clf, pima_rec, pima_folds, clf_metrics) |>
+pima_tabpfn <- run_cv(tabpfn_clf, pima_recs$tabpfn, pima_folds, clf_metrics) |>
   mutate(model = "TabPFN")
-pima_xgb <- run_cv(xgb_clf, pima_rec, pima_folds, clf_metrics) |>
+pima_xgb <- run_cv(xgb_clf, pima_recs$xgb, pima_folds, clf_metrics) |>
   mutate(model = "XGBoost")
 pima_results <- bind_rows(pima_tabpfn, pima_xgb) |>
   mutate(dataset = "Pima")
@@ -143,11 +153,11 @@ data(Glass)
 
 set.seed(42)
 glass_folds <- vfold_cv(Glass, v = 10, strata = Type)
-glass_rec   <- recipe(Type ~ ., data = Glass)
+glass_recs  <- make_recipes(Type ~ ., data = Glass)
 
-glass_tabpfn <- run_cv(tabpfn_clf, glass_rec, glass_folds, clf_metrics) |>
+glass_tabpfn <- run_cv(tabpfn_clf, glass_recs$tabpfn, glass_folds, clf_metrics) |>
   mutate(model = "TabPFN")
-glass_xgb <- run_cv(xgb_clf, glass_rec, glass_folds, clf_metrics) |>
+glass_xgb <- run_cv(xgb_clf, glass_recs$xgb, glass_folds, clf_metrics) |>
   mutate(model = "XGBoost")
 glass_results <- bind_rows(glass_tabpfn, glass_xgb) |>
   mutate(dataset = "Glass")
@@ -186,12 +196,12 @@ data(BostonHousing)
 
 set.seed(42)
 boston_folds <- vfold_cv(BostonHousing, v = 10)
-boston_rec   <- recipe(medv ~ ., data = BostonHousing)
+boston_recs  <- make_recipes(medv ~ ., data = BostonHousing)
 reg_metrics <- metric_set(rmse, rsq)
 
-boston_tabpfn <- run_cv(tabpfn_reg, boston_rec, boston_folds, reg_metrics) |>
+boston_tabpfn <- run_cv(tabpfn_reg, boston_recs$tabpfn, boston_folds, reg_metrics) |>
   mutate(model = "TabPFN")
-boston_xgb <- run_cv(xgb_reg, boston_rec, boston_folds, reg_metrics) |>
+boston_xgb <- run_cv(xgb_reg, boston_recs$xgb, boston_folds, reg_metrics) |>
   mutate(model = "XGBoost")
 boston_results <- bind_rows(boston_tabpfn, boston_xgb) |>
   mutate(dataset = "Boston")
@@ -208,11 +218,11 @@ data(Servo)
 
 set.seed(42)
 servo_folds <- vfold_cv(Servo, v = 10)
-servo_rec   <- recipe(Class ~ ., data = Servo)
+servo_recs  <- make_recipes(Class ~ ., data = Servo)
 
-servo_tabpfn <- run_cv(tabpfn_reg, servo_rec, servo_folds, reg_metrics) |>
+servo_tabpfn <- run_cv(tabpfn_reg, servo_recs$tabpfn, servo_folds, reg_metrics) |>
   mutate(model = "TabPFN")
-servo_xgb <- run_cv(xgb_reg, servo_rec, servo_folds, reg_metrics) |>
+servo_xgb <- run_cv(xgb_reg, servo_recs$xgb, servo_folds, reg_metrics) |>
   mutate(model = "XGBoost")
 servo_results <- bind_rows(servo_tabpfn, servo_xgb) |>
   mutate(dataset = "Servo")
@@ -259,6 +269,8 @@ all_results |>
 - TabPFN uses default hyperparameters (`n_estimators = 8`); XGBoost uses a
   reasonable default (`trees = 300, learn_rate = 0.1, tree_depth = 6`).
   Neither model is tuned -- this is a fair out-of-the-box comparison.
+- TabPFN handles factors natively; XGBoost requires numeric input, so
+  its recipe includes `step_dummy(all_nominal_predictors())`.
 - TabPFN is designed for datasets with fewer than ~10,000 samples and ~500
   features. On larger datasets, tree-based methods like XGBoost are typically
   more practical.
