@@ -8,9 +8,6 @@ Authors@R: c(
         comment = c(ORCID = "0000-0002-8576-0169")),
     person("Claude", "Anthropic",
         role = "ctb",
-        comment = "Primary code author (AI assistant)"),
-    person("Codex", "OpenAI",
-        role = "ctb",
         comment = "Code author (AI assistant)"))
 URL: https://github.com/onertipaday/rtabpfn
 BugReports: https://github.com/onertipaday/rtabpfn/issues
