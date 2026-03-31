@@ -167,3 +167,54 @@ reassemble_cv_embeddings <- function(results, n, aggregate) {
     out
   }
 }
+
+
+#' Extract Embeddings from a parsnip or workflow Fit
+#'
+#' Convenience wrapper that unwraps a parsnip `model_fit` or a
+#' `workflows` fit to reach the underlying TabPFN engine, then calls
+#' [tabpfn_embeddings()].
+#'
+#' @param object A fitted parsnip `model_fit` or `workflow` object.
+#' @param new_data A data.frame, tibble, data.table, or matrix.
+#' @param ... Forwarded to [tabpfn_embeddings()] (e.g. `data_source`,
+#'   `aggregate`).
+#'
+#' @return Same as [tabpfn_embeddings()].
+#'
+#' @examples
+#' \dontrun{
+#' library(parsnip)
+#' library(workflows)
+#' library(recipes)
+#' spec <- tabpfn_model(mode = "classification", n_estimators = 4L)
+#' rec  <- recipe(Species ~ ., data = iris)
+#' wf   <- workflow() |> add_recipe(rec) |> add_model(spec)
+#' wf_fit <- fit(wf, data = iris)
+#' emb <- extract_embeddings(wf_fit, iris[1:10, 1:4])
+#' }
+#'
+#' @export
+extract_embeddings <- function(object, new_data, ...) {
+  engine <- extract_tabpfn_engine(object)
+  tabpfn_embeddings(engine, new_data, ...)
+}
+
+
+#' Unwrap a parsnip/workflow fit to the TabPFN engine object
+#' @keywords internal
+extract_tabpfn_engine <- function(object) {
+  if (inherits(object, "workflow")) {
+    object <- workflows::extract_fit_parsnip(object)
+  }
+  if (inherits(object, "model_fit")) {
+    object <- object$fit
+  }
+  if (!inherits(object, c("tabpfn_classifier", "tabpfn_regressor"))) {
+    rlang::abort(
+      "Could not extract a TabPFN engine from this object.",
+      class = "rtabpfn_input_error"
+    )
+  }
+  object
+}

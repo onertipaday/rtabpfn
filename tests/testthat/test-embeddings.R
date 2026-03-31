@@ -145,3 +145,40 @@ test_that("tabpfn_embeddings_cv respects aggregate parameter", {
   )
   expect_equal(ncol(emb_concat), 2L * ncol(emb_mean))
 })
+
+# --- extract_embeddings (parsnip / workflows) --------------------------------
+
+test_that("extract_embeddings works on a workflow fit", {
+  skip_if_no_tabpfn()
+  skip_if_not_installed("parsnip")
+  skip_if_not_installed("workflows")
+  skip_if_not_installed("recipes")
+
+  spec <- tabpfn_model(mode = "classification", n_estimators = 2L, device = "cpu")
+  rec <- recipes::recipe(Species ~ ., data = iris[1:120, ])
+  wf <- workflows::workflow() |>
+    workflows::add_recipe(rec) |>
+    workflows::add_model(spec)
+  wf_fit <- parsnip::fit(wf, data = iris[1:120, ])
+
+  emb <- extract_embeddings(wf_fit, iris[121:150, 1:4])
+  expect_true(is.matrix(emb))
+  expect_equal(nrow(emb), 30L)
+})
+
+test_that("extract_embeddings forwards aggregate parameter", {
+  skip_if_no_tabpfn()
+  skip_if_not_installed("parsnip")
+  skip_if_not_installed("workflows")
+  skip_if_not_installed("recipes")
+
+  spec <- tabpfn_model(mode = "classification", n_estimators = 2L, device = "cpu")
+  rec <- recipes::recipe(Species ~ ., data = iris[1:120, ])
+  wf <- workflows::workflow() |>
+    workflows::add_recipe(rec) |>
+    workflows::add_model(spec)
+  wf_fit <- parsnip::fit(wf, data = iris[1:120, ])
+
+  emb_none <- extract_embeddings(wf_fit, iris[121:150, 1:4], aggregate = "none")
+  expect_equal(length(dim(emb_none)), 3L)
+})
