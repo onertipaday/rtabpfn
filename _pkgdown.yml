@@ -36,6 +36,9 @@ articles:
   - title: "Embeddings"
     contents:
       - embeddings
+  - title: "Benchmarks"
+    contents:
+      - benchmark
   - title: "Demo"
     contents:
       - tabpfn-demo

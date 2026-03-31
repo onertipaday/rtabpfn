@@ -32,6 +32,7 @@ Suggests:
     rsample (>= 1.2.0),
     yardstick (>= 1.3.0),
     ranger (>= 0.16.0),
+    xgboost (>= 1.7.0),
     mlbench,
     ggplot2 (>= 3.4.0),
     tidyr (>= 1.3.0),

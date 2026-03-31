@@ -1,0 +1,266 @@
+---
+title: "TabPFN vs XGBoost Benchmark"
+output: rmarkdown::html_vignette
+knitr:
+  opts_chunk:
+    dev: "pdf"
+vignette: >
+  %\VignetteIndexEntry{TabPFN vs XGBoost Benchmark}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = reticulate::py_module_available("tabpfn") &&
+         requireNamespace("parsnip",   quietly = TRUE) &&
+         requireNamespace("workflows", quietly = TRUE) &&
+         requireNamespace("recipes",   quietly = TRUE) &&
+         requireNamespace("rsample",   quietly = TRUE) &&
+         requireNamespace("yardstick", quietly = TRUE) &&
+         requireNamespace("tune",      quietly = TRUE) &&
+         requireNamespace("xgboost",   quietly = TRUE) &&
+         requireNamespace("mlbench",   quietly = TRUE) &&
+         requireNamespace("ggplot2",   quietly = TRUE) &&
+         requireNamespace("tidyr",     quietly = TRUE)
+)
+```
+
+This vignette compares **TabPFN** with **XGBoost** on small-to-medium tabular
+datasets using 10-fold cross-validation through tidymodels. TabPFN is a
+transformer-based model that performs in-context learning and typically excels
+on datasets with fewer than a few thousand samples -- exactly the regime where
+tree-based methods can struggle with limited data.
+
+```{r libs, message = FALSE}
+library(rtabpfn)
+library(parsnip)
+library(workflows)
+library(recipes)
+library(rsample)
+library(yardstick)
+library(tune)
+library(mlbench)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+## Helper Function
+
+A small wrapper that runs 10-fold CV for a given model spec and recipe,
+then collects the metric summaries.
+
+```{r helper}
+run_cv <- function(spec, rec, folds, metrics) {
+  wf <- workflow() |>
+    add_recipe(rec) |>
+    add_model(spec)
+  res <- fit_resamples(wf, resamples = folds, metrics = metrics,
+                       control = control_resamples(save_pred = FALSE))
+  collect_metrics(res)
+}
+```
+
+## Model Specifications
+
+```{r specs}
+tabpfn_clf <- tabpfn_model(
+  mode         = "classification",
+  n_estimators = 8L,
+  device       = "cpu"
+)
+
+xgb_clf <- boost_tree(trees = 300, learn_rate = 0.1, tree_depth = 6) |>
+  set_engine("xgboost") |>
+  set_mode("classification")
+
+tabpfn_reg <- tabpfn_model(
+  mode         = "regression",
+  n_estimators = 8L,
+  device       = "cpu"
+)
+
+xgb_reg <- boost_tree(trees = 300, learn_rate = 0.1, tree_depth = 6) |>
+  set_engine("xgboost") |>
+  set_mode("regression")
+```
+
+---
+
+# Classification Benchmarks
+
+## 1. Ionosphere (351 x 34)
+
+Radar returns from the ionosphere -- binary classification.
+
+```{r clf-ionosphere}
+data(Ionosphere)
+iono <- Ionosphere[, -2]  # drop constant column V2
+
+set.seed(42)
+iono_folds <- vfold_cv(iono, v = 10, strata = Class)
+iono_rec   <- recipe(Class ~ ., data = iono)
+clf_metrics <- metric_set(accuracy, roc_auc)
+
+iono_tabpfn <- run_cv(tabpfn_clf, iono_rec, iono_folds, clf_metrics) |>
+  mutate(model = "TabPFN")
+iono_xgb <- run_cv(xgb_clf, iono_rec, iono_folds, clf_metrics) |>
+  mutate(model = "XGBoost")
+iono_results <- bind_rows(iono_tabpfn, iono_xgb) |>
+  mutate(dataset = "Ionosphere")
+iono_results |> select(model, .metric, mean, std_err)
+```
+
+## 2. Pima Indians Diabetes (768 x 9)
+
+Predicting diabetes onset -- binary classification.
+
+```{r clf-pima}
+data(PimaIndiansDiabetes)
+
+set.seed(42)
+pima_folds <- vfold_cv(PimaIndiansDiabetes, v = 10, strata = diabetes)
+pima_rec   <- recipe(diabetes ~ ., data = PimaIndiansDiabetes)
+
+pima_tabpfn <- run_cv(tabpfn_clf, pima_rec, pima_folds, clf_metrics) |>
+  mutate(model = "TabPFN")
+pima_xgb <- run_cv(xgb_clf, pima_rec, pima_folds, clf_metrics) |>
+  mutate(model = "XGBoost")
+pima_results <- bind_rows(pima_tabpfn, pima_xgb) |>
+  mutate(dataset = "Pima")
+pima_results |> select(model, .metric, mean, std_err)
+```
+
+## 3. Glass (214 x 10)
+
+Identifying glass type from oxide content -- multi-class classification (6 classes).
+
+```{r clf-glass}
+data(Glass)
+
+set.seed(42)
+glass_folds <- vfold_cv(Glass, v = 10, strata = Type)
+glass_rec   <- recipe(Type ~ ., data = Glass)
+
+glass_tabpfn <- run_cv(tabpfn_clf, glass_rec, glass_folds, clf_metrics) |>
+  mutate(model = "TabPFN")
+glass_xgb <- run_cv(xgb_clf, glass_rec, glass_folds, clf_metrics) |>
+  mutate(model = "XGBoost")
+glass_results <- bind_rows(glass_tabpfn, glass_xgb) |>
+  mutate(dataset = "Glass")
+glass_results |> select(model, .metric, mean, std_err)
+```
+
+## Classification Summary
+
+```{r clf-summary, fig.width = 8, fig.height = 4}
+clf_all <- bind_rows(iono_results, pima_results, glass_results)
+
+ggplot(clf_all, aes(x = dataset, y = mean, fill = model)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_errorbar(
+    aes(ymin = mean - std_err, ymax = mean + std_err),
+    position = position_dodge(width = 0.7), width = 0.2
+  ) +
+  facet_wrap(~ .metric, scales = "free_y") +
+  scale_fill_manual(values = c("TabPFN" = "#4E79A7", "XGBoost" = "#E15759")) +
+  labs(x = NULL, y = "Mean (10-fold CV)", fill = NULL,
+       title = "Classification: TabPFN vs XGBoost") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+---
+
+# Regression Benchmarks
+
+## 1. Boston Housing (506 x 13)
+
+Predicting median home value from neighbourhood characteristics.
+
+```{r reg-boston}
+data(BostonHousing)
+
+set.seed(42)
+boston_folds <- vfold_cv(BostonHousing, v = 10)
+boston_rec   <- recipe(medv ~ ., data = BostonHousing)
+reg_metrics <- metric_set(rmse, rsq)
+
+boston_tabpfn <- run_cv(tabpfn_reg, boston_rec, boston_folds, reg_metrics) |>
+  mutate(model = "TabPFN")
+boston_xgb <- run_cv(xgb_reg, boston_rec, boston_folds, reg_metrics) |>
+  mutate(model = "XGBoost")
+boston_results <- bind_rows(boston_tabpfn, boston_xgb) |>
+  mutate(dataset = "Boston")
+boston_results |> select(model, .metric, mean, std_err)
+```
+
+## 2. Servo (167 x 5)
+
+Predicting rise time from motor/screw configuration -- a very small dataset
+where TabPFN's in-context learning should shine.
+
+```{r reg-servo}
+data(Servo)
+
+set.seed(42)
+servo_folds <- vfold_cv(Servo, v = 10)
+servo_rec   <- recipe(Class ~ ., data = Servo)
+
+servo_tabpfn <- run_cv(tabpfn_reg, servo_rec, servo_folds, reg_metrics) |>
+  mutate(model = "TabPFN")
+servo_xgb <- run_cv(xgb_reg, servo_rec, servo_folds, reg_metrics) |>
+  mutate(model = "XGBoost")
+servo_results <- bind_rows(servo_tabpfn, servo_xgb) |>
+  mutate(dataset = "Servo")
+servo_results |> select(model, .metric, mean, std_err)
+```
+
+## Regression Summary
+
+```{r reg-summary, fig.width = 8, fig.height = 4}
+reg_all <- bind_rows(boston_results, servo_results)
+
+ggplot(reg_all, aes(x = dataset, y = mean, fill = model)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  geom_errorbar(
+    aes(ymin = mean - std_err, ymax = mean + std_err),
+    position = position_dodge(width = 0.7), width = 0.2
+  ) +
+  facet_wrap(~ .metric, scales = "free_y") +
+  scale_fill_manual(values = c("TabPFN" = "#4E79A7", "XGBoost" = "#E15759")) +
+  labs(x = NULL, y = "Mean (10-fold CV)", fill = NULL,
+       title = "Regression: TabPFN vs XGBoost") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+## Combined Results Table
+
+```{r results-table}
+all_results <- bind_rows(clf_all, reg_all) |>
+  select(dataset, model, .metric, mean, std_err) |>
+  mutate(mean = round(mean, 4), std_err = round(std_err, 4))
+
+all_results |>
+  pivot_wider(
+    names_from = model,
+    values_from = c(mean, std_err),
+    names_glue = "{model}_{.value}"
+  ) |>
+  arrange(dataset, .metric)
+```
+
+## Notes
+
+- TabPFN uses default hyperparameters (`n_estimators = 8`); XGBoost uses a
+  reasonable default (`trees = 300, learn_rate = 0.1, tree_depth = 6`).
+  Neither model is tuned -- this is a fair out-of-the-box comparison.
+- TabPFN is designed for datasets with fewer than ~10,000 samples and ~500
+  features. On larger datasets, tree-based methods like XGBoost are typically
+  more practical.
+- All benchmarks use `device = "cpu"`. GPU acceleration can significantly
+  speed up TabPFN inference.
