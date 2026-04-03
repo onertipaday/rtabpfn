@@ -66,7 +66,7 @@ tabpfn_regressor.default <- function(x, y,
   y_np <- reticulate::np_array(y, dtype = "float64")
 
   py_version <- resolve_model_version(model_version)
-  version_label <- model_version %||% "v2.6"
+  version_label <- model_version %||% .tabpfn_default_version
 
   # Merge control args with explicit args
   base_args <- list(
@@ -145,15 +145,7 @@ predict.tabpfn_regressor <- function(object, new_data, type = "numeric",
     ))
   }
 
-  # If new_data has extra columns (e.g., the outcome from formula interface),
-  # select only the feature columns used during training
-  if (is.data.frame(new_data) && !is.null(object$feature_names)) {
-    matching <- intersect(object$feature_names, colnames(new_data))
-    if (length(matching) == length(object$feature_names)) {
-      new_data <- new_data[, object$feature_names, drop = FALSE]
-    }
-  }
-
+  new_data <- select_training_features(new_data, object$feature_names)
   x_np <- ensure_numpy_array(new_data)
   n_rows <- nrow(new_data)
 

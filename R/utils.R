@@ -42,10 +42,27 @@ validate_regressor_inputs <- function(x, y) {
   as.double(y)
 }
 
-# Data constraint constants (TabPFN v2.5+)
+# Package-level constants
 .tabpfn_row_limit <- 50000L
 .tabpfn_col_limit <- 2000L
 .tabpfn_class_limit <- 10L
+.tabpfn_default_version <- "v2.6"
+
+#' Select feature columns matching those used during training
+#'
+#' @param new_data A data.frame or matrix of new observations.
+#' @param feature_names Character vector of feature names from training.
+#' @return `new_data`, possibly subsetted to feature columns only.
+#' @keywords internal
+select_training_features <- function(new_data, feature_names) {
+  if (is.data.frame(new_data) && !is.null(feature_names)) {
+    matching <- intersect(feature_names, colnames(new_data))
+    if (length(matching) == length(feature_names)) {
+      new_data <- new_data[, feature_names, drop = FALSE]
+    }
+  }
+  new_data
+}
 
 #' Check data constraints for TabPFN
 #'
@@ -132,22 +149,25 @@ subsample_training_set <- function(x, y, limit) {
   group_tab <- table(groups)
   group_props <- group_tab / n
 
-  # Allocate samples proportionally, ceiling to avoid dropping small groups
-  group_alloc <- ceiling(group_props * limit)
+  # Proportional allocation with remainder redistribution
+  group_alloc <- floor(group_props * limit)
+  remainder <- limit - sum(group_alloc)
+  if (remainder > 0) {
+    # Distribute remaining slots to groups with largest fractional parts
+    frac <- (group_props * limit) - group_alloc
+    top_groups <- names(sort(frac, decreasing = TRUE))[seq_len(remainder)]
+    group_alloc[top_groups] <- group_alloc[top_groups] + 1L
+  }
 
-  indices <- integer(0)
-  for (g in names(group_tab)) {
+  idx_list <- vector("list", length(group_tab))
+  for (i in seq_along(group_tab)) {
+    g <- names(group_tab)[[i]]
     g_idx <- which(groups == g)
     n_take <- min(group_alloc[[g]], length(g_idx))
-    indices <- c(indices, sample(g_idx, n_take))
+    idx_list[[i]] <- sample(g_idx, n_take)
   }
 
-  # Trim to exact limit if ceiling caused overshoot
-  if (length(indices) > limit) {
-    indices <- sample(indices, limit)
-  }
-
-  sort(indices)
+  sort(unlist(idx_list, use.names = FALSE))
 }
 
 #' Map R model version string to Python ModelVersion enum

@@ -13,12 +13,14 @@ check_libomp <- function() {
   if (Sys.info()[["sysname"]] != "Darwin") {
     return(invisible(NULL))
   }
+  # Pipe through grep to avoid pulling full process memory map into R
   vm_output <- tryCatch(
-    system(paste("vmmap", Sys.getpid()), intern = TRUE, ignore.stderr = TRUE),
+    system(paste("vmmap", Sys.getpid(), "| grep libomp"),
+           intern = TRUE, ignore.stderr = TRUE),
     error = function(e) character(0),
     warning = function(w) character(0)
   )
-  if (length(vm_output) > 0 && any(grepl("libomp", vm_output))) {
+  if (length(vm_output) > 0) {
     rlang::warn(
       c(
         "An existing package has loaded OpenMP (libomp).",

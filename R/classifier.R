@@ -72,7 +72,7 @@ tabpfn_classifier.default <- function(x, y,
   y_np <- as.integer(as.numeric(y) - 1L)
 
   py_version <- resolve_model_version(model_version)
-  version_label <- model_version %||% "v2.6"
+  version_label <- model_version %||% .tabpfn_default_version
 
   # Merge control args with explicit args
   base_args <- list(
@@ -156,15 +156,7 @@ predict.tabpfn_classifier <- function(object, new_data, type = "class", ...) {
     ))
   }
 
-  # If new_data has extra columns (e.g., the outcome from formula interface),
-  # select only the feature columns used during training
-  if (is.data.frame(new_data) && !is.null(object$feature_names)) {
-    matching <- intersect(object$feature_names, colnames(new_data))
-    if (length(matching) == length(object$feature_names)) {
-      new_data <- new_data[, object$feature_names, drop = FALSE]
-    }
-  }
-
+  new_data <- select_training_features(new_data, object$feature_names)
   x_np <- ensure_numpy_array(new_data)
 
   if (type == "class") {
@@ -207,8 +199,13 @@ generics::augment
 #'
 #' @export
 augment.tabpfn_classifier <- function(x, new_data, ...) {
-  preds_class <- predict(x, new_data, type = "class")
-  preds_prob  <- predict(x, new_data, type = "prob")
+  # Single Python round-trip: get probabilities and derive class from argmax
+  preds_prob <- predict(x, new_data, type = "prob")
+  prob_mat <- as.matrix(preds_prob)
+  pred_class <- x$classes[max.col(prob_mat, ties.method = "first")]
+  preds_class <- tibble::tibble(
+    .pred_class = factor(pred_class, levels = x$classes)
+  )
   new_data <- tibble::as_tibble(new_data)
   dplyr::bind_cols(new_data, preds_class, preds_prob)
 }

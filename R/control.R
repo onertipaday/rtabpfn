@@ -36,7 +36,7 @@ control_tabpfn <- function(n_preprocessing_jobs = 1L,
     )
   }
 
-  if (!is.character(inference_precision) && !is.character(inference_precision)) {
+  if (!is.character(inference_precision)) {
     rlang::abort("inference_precision must be a character string.",
                  class = "rtabpfn_input_error")
   }
