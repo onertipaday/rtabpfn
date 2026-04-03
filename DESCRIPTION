@@ -1,6 +1,6 @@
 Package: rtabpfn
 Title: R Interface to TabPFN for Tabular Data Classification and Regression
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: c(
     person("Paolo", "Sonego",
         role = c("aut", "cre"),
@@ -20,7 +20,8 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Depends: R (>= 4.1.0)
 Imports:
-    reticulate (>= 1.34),
+    generics (>= 0.1.0),
+    reticulate (>= 1.41),
     rlang (>= 1.1.0),
     tibble (>= 3.2.0),
     dplyr (>= 1.1.0)

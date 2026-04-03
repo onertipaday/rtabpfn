@@ -29,10 +29,19 @@ Install the R package from GitHub:
 pak::pak("your-org/rtabpfn")
 ```
 
-Then install the TabPFN Python package into a dedicated virtual environment:
+Then install the TabPFN Python package. The easiest way is to simply load
+the package — `rtabpfn` uses `reticulate::py_require("tabpfn")` at load
+time, which automatically provisions an ephemeral Python environment via
+[uv](https://docs.astral.sh/uv/) (requires reticulate >= 1.41):
 
 ```r
 library(rtabpfn)
+# Python tabpfn is auto-installed on first load
+```
+
+Alternatively, create a dedicated virtual environment with `install_tabpfn()`:
+
+```r
 install_tabpfn()
 ```
 
@@ -118,6 +127,50 @@ preds_q <- predict(reg, x_test_r,
 head(preds_q, 9)
 ```
 
+## Formula Interface
+
+Both `tabpfn_classifier()` and `tabpfn_regressor()` accept a formula as the first argument, just like `lm()` or `glm()`:
+
+```{r formula-classifier}
+clf_f <- tabpfn_classifier(Species ~ ., data = iris[1:120, ],
+                           n_estimators = 2L, device = "cpu")
+clf_f
+```
+
+When you fit via formula, `predict()` automatically selects only the feature columns — so you can safely pass the full data frame (including the outcome column):
+
+```{r formula-predict}
+preds_f <- predict(clf_f, iris[121:150, ], type = "class")
+mean(preds_f$.pred_class == iris$Species[121:150])
+```
+
+The formula interface works the same way for regression:
+
+```{r formula-regressor}
+reg_f <- tabpfn_regressor(mpg ~ ., data = mtcars[1:25, ],
+                          n_estimators = 2L, device = "cpu")
+preds_rf <- predict(reg_f, mtcars[26:32, ])
+sqrt(mean((preds_rf$.pred - mtcars$mpg[26:32])^2))
+```
+
+## Augment
+
+The `augment()` generic (from the [generics](https://generics.r-lib.org/) package) appends predictions to the original data frame. This is convenient for downstream analysis and plotting:
+
+```{r augment-classifier}
+aug_clf <- augment(clf, x_test)
+head(aug_clf)
+```
+
+For classifiers, `augment()` adds both class predictions (`.pred_class`) and per-class probabilities (`.pred_<classname>`).
+
+For regressors, `augment()` adds `.pred`:
+
+```{r augment-regressor}
+aug_reg <- augment(reg, x_test_r)
+head(aug_reg)
+```
+
 ## Model Versions
 
 TabPFN ships several model checkpoints. Use the `model_version` parameter to select one:
@@ -178,4 +231,56 @@ When `TRUE`, the classifier adjusts predicted probabilities to account for class
 
 ```{r balance, eval = FALSE}
 clf_bal <- tabpfn_classifier(x_train, y_train, balance_probabilities = TRUE, device = "cpu")
+```
+
+## Data Constraints and Subsampling
+
+TabPFN has pre-training limits: up to 50,000 rows, 2,000 features, and 10 classes. By default, `rtabpfn` checks these constraints and raises an error if they are exceeded.
+
+**`training_set_limit`** lets you cap the training set size with stratified subsampling (by class for classifiers, by quartile for regressors):
+
+```{r subsampling, eval = FALSE}
+# Subsample to at most 10,000 training rows
+clf <- tabpfn_classifier(x_train, y_train, training_set_limit = 10000L, device = "cpu")
+```
+
+**`ignore_pretraining_limits`** bypasses the row and column limit checks (the 10-class limit is always enforced):
+```{r ignore-limits, eval = FALSE}
+clf <- tabpfn_classifier(x_large, y_large, ignore_pretraining_limits = TRUE, device = "cpu")
+```
+
+## Control Options
+
+`control_tabpfn()` creates a control object for advanced Python backend settings:
+
+```{r control-example}
+ctrl <- control_tabpfn(
+  fit_mode = "low_memory",
+  n_preprocessing_jobs = -1L
+)
+ctrl
+```
+
+Pass it to the `control` argument:
+
+```{r control-use, eval = FALSE}
+clf <- tabpfn_classifier(x_train, y_train, control = ctrl, device = "cpu")
+```
+
+Available options:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_preprocessing_jobs` | `1L` | Number of preprocessing workers (`-1L` = all cores) |
+| `fit_mode` | `"fit_preprocessors"` | `"fit_preprocessors"`, `"low_memory"`, `"fit_with_cache"`, or `"batched"` |
+| `memory_saving_mode` | `"auto"` | Helps with OOM errors (`"auto"`, `TRUE`, `FALSE`) |
+| `inference_precision` | `"auto"` | Speed/reproducibility trade-off (`"auto"`, `"autocast"`, or a torch dtype) |
+
+## Fit Logging
+
+During `fit()`, Python stdout is captured and stored in the `logging` field of the model object. This is useful for debugging or checking what the Python backend reports:
+
+```{r logging, eval = FALSE}
+clf <- tabpfn_classifier(x_train, y_train, device = "cpu")
+cat(clf$logging)
 ```

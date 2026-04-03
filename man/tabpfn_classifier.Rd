@@ -2,9 +2,13 @@
 % Please edit documentation in R/classifier.R
 \name{tabpfn_classifier}
 \alias{tabpfn_classifier}
+\alias{tabpfn_classifier.default}
+\alias{tabpfn_classifier.formula}
 \title{Fit a TabPFN Classifier}
 \usage{
-tabpfn_classifier(
+tabpfn_classifier(x, ...)
+
+\method{tabpfn_classifier}{default}(
   x,
   y,
   n_estimators = 8L,
@@ -13,11 +17,20 @@ tabpfn_classifier(
   device = "auto",
   model_version = NULL,
   random_state = 0L,
+  ignore_pretraining_limits = FALSE,
+  training_set_limit = Inf,
+  control = NULL,
   ...
 )
+
+\method{tabpfn_classifier}{formula}(x, data, ...)
 }
 \arguments{
-\item{x}{A data.frame, tibble, data.table, or matrix of predictors.}
+\item{x}{A data.frame, tibble, data.table, matrix of predictors, or a
+formula (e.g., \code{Species ~ .}).}
+
+\item{...}{Arguments passed to methods. For the formula method, these are
+forwarded to the default (XY) method.}
 
 \item{y}{A factor, character, or integer vector of class labels.}
 
@@ -36,7 +49,18 @@ Default \code{FALSE}.}
 
 \item{random_state}{Integer. Random seed. Default \code{0L}.}
 
-\item{...}{Additional arguments passed to the Python \code{TabPFNClassifier}.}
+\item{ignore_pretraining_limits}{Logical. If \code{TRUE}, bypass the row and
+column limit checks (class limit is always enforced). Default \code{FALSE}.}
+
+\item{training_set_limit}{Integer or \code{Inf}. Maximum number of training
+samples. If the training set exceeds this limit, it is stratified-subsampled
+(by class) to this size. Default \code{Inf} (no subsampling).}
+
+\item{control}{A \code{control_tabpfn} object created by \code{\link[=control_tabpfn]{control_tabpfn()}}, or
+\code{NULL} (default) for Python defaults.}
+
+\item{data}{A data.frame containing both predictors and outcome (used with
+the formula interface).}
 }
 \value{
 An object of class \code{"tabpfn_classifier"}.
@@ -47,9 +71,13 @@ model that performs in-context learning on the training data.
 }
 \examples{
 \dontrun{
+# XY interface
 fit <- tabpfn_classifier(iris[, 1:4], iris$Species)
 predict(fit, iris[1:10, 1:4])
-predict(fit, iris[1:10, 1:4], type = "prob")
+
+# Formula interface
+fit <- tabpfn_classifier(Species ~ ., data = iris)
+predict(fit, iris[1:10, ])
 }
 
 }

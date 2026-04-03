@@ -42,6 +42,114 @@ validate_regressor_inputs <- function(x, y) {
   as.double(y)
 }
 
+# Data constraint constants (TabPFN v2.5+)
+.tabpfn_row_limit <- 50000L
+.tabpfn_col_limit <- 2000L
+.tabpfn_class_limit <- 10L
+
+#' Check data constraints for TabPFN
+#'
+#' Validates that training data is within the limits supported by TabPFN.
+#'
+#' @param x A data.frame, tibble, data.table, or matrix of predictors.
+#' @param y A vector of outcomes (factor for classification, numeric for regression).
+#' @param ignore_limits Logical. If `TRUE`, skip row/column checks (class limit
+#'   is always enforced). Default `FALSE`.
+#' @return Invisible `NULL`. Called for side effects (errors on constraint violation).
+#' @keywords internal
+check_data_constraints <- function(x, y, ignore_limits = FALSE) {
+  n_rows <- nrow(x)
+  n_cols <- ncol(x)
+
+  if (!ignore_limits && n_rows > .tabpfn_row_limit) {
+    rlang::abort(
+      c(
+        paste0("Training set has ", format(n_rows, big.mark = ","),
+               " rows, but TabPFN supports <= ",
+               format(.tabpfn_row_limit, big.mark = ","), "."),
+        i = "Use `training_set_limit` to automatically subsample.",
+        i = "Or set `ignore_pretraining_limits = TRUE` to bypass this check."
+      ),
+      class = "rtabpfn_data_constraint_error"
+    )
+  }
+
+  if (!ignore_limits && n_cols > .tabpfn_col_limit) {
+    rlang::abort(
+      c(
+        paste0("Training set has ", format(n_cols, big.mark = ","),
+               " predictors, but TabPFN supports <= ",
+               format(.tabpfn_col_limit, big.mark = ","), "."),
+        i = "Reduce the number of predictors before fitting.",
+        i = "Or set `ignore_pretraining_limits = TRUE` to bypass this check."
+      ),
+      class = "rtabpfn_data_constraint_error"
+    )
+  }
+
+  if (is.factor(y) || is.character(y)) {
+    n_classes <- length(unique(y))
+    if (n_classes > .tabpfn_class_limit) {
+      rlang::abort(
+        c(
+          paste0("Outcome has ", n_classes, " classes, but TabPFN supports <= ",
+                 .tabpfn_class_limit, "."),
+          x = "This limit cannot be bypassed."
+        ),
+        class = "rtabpfn_data_constraint_error"
+      )
+    }
+  }
+
+  invisible(NULL)
+}
+
+#' Subsample training data with stratification
+#'
+#' For classification, stratifies by class. For regression, stratifies by
+#' outcome quartile. Returns indices to keep.
+#'
+#' @param x A data.frame, tibble, data.table, or matrix of predictors.
+#' @param y A vector of outcomes.
+#' @param limit Integer. Maximum number of training samples.
+#' @return An integer vector of row indices to keep, or `NULL` if no
+#'   subsampling is needed.
+#' @keywords internal
+subsample_training_set <- function(x, y, limit) {
+  n <- nrow(x)
+  if (n <= limit) {
+    return(NULL)
+  }
+
+  if (is.factor(y) || is.character(y)) {
+    # Stratify by class
+    groups <- as.character(y)
+  } else {
+    # Stratify by quartile for regression
+    groups <- as.character(dplyr::ntile(y, n = 4L))
+  }
+
+  group_tab <- table(groups)
+  group_props <- group_tab / n
+
+  # Allocate samples proportionally, ceiling to avoid dropping small groups
+  group_alloc <- ceiling(group_props * limit)
+
+  indices <- integer(0)
+  for (g in names(group_tab)) {
+    g_idx <- which(groups == g)
+    n_take <- min(group_alloc[[g]], length(g_idx))
+    indices <- c(indices, sample(g_idx, n_take))
+  }
+
+  # Trim to exact limit if ceiling caused overshoot
+  if (length(indices) > limit) {
+    indices <- sample(indices, limit)
+  }
+
+  sort(indices)
+}
+
 #' Map R model version string to Python ModelVersion enum
 #'
 #' @param version A string: `"v2"`, `"v2.5"`, or `"v2.6"`, or `NULL`.

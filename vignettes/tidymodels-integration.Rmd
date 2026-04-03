@@ -97,6 +97,22 @@ preds_prob <- predict(clf_fit, iris_test, type = "prob")
 head(preds_prob)
 ```
 
+### Augment
+
+The native `tabpfn_classifier` and `tabpfn_regressor` objects support `augment()` from the [generics](https://generics.r-lib.org/) package. This appends predictions directly to the input data frame — useful outside of a tidymodels workflow:
+
+```{r augment-native}
+# Fit via the native API
+clf_native <- tabpfn_classifier(
+  x            = iris_train[, 1:4],
+  y            = iris_train$Species,
+  n_estimators = 2L,
+  device       = "cpu"
+)
+
+augment(clf_native, iris_test[, 1:4]) |> head()
+```
+
 ## Regression Workflow
 
 ```{r libs-reg}

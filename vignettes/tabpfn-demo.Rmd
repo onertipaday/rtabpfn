@@ -87,6 +87,20 @@ auc <- roc_auc(
 cat("TabPFN ROC AUC:", round(auc$.estimate, 4), "\n")
 ```
 
+Alternatively, use the **formula interface** — `predict()` automatically selects only feature columns, so passing the full test data frame (including the outcome) is safe:
+
+```{r pk-formula}
+clf_f <- tabpfn_classifier(status ~ ., data = pk_tr,
+                           n_estimators = 8L, device = "cpu")
+probs_f <- predict(clf_f, pk_te, type = "prob")
+
+auc_f <- roc_auc(
+  bind_cols(truth = y_te, probs_f),
+  truth = truth, .pred_parkinsons, event_level = "second"
+)
+cat("TabPFN (formula) ROC AUC:", round(auc_f$.estimate, 4), "\n")
+```
+
 ### 10-fold cross-validation comparison
 
 ```{r pk-cv, message = FALSE}
@@ -162,6 +176,13 @@ cat(sprintf(
   rmse_vec(yte, preds$.pred),
   cor(yte, preds$.pred)^2
 ))
+```
+
+Use `augment()` to append predictions directly to the test data:
+
+```{r bos-augment}
+aug <- augment(reg, Xte)
+head(aug)
 ```
 
 ### 10-fold cross-validation comparison

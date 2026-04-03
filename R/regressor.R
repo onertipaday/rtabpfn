@@ -2,32 +2,64 @@
 #'
 #' Trains a TabPFN regressor on tabular data.
 #'
-#' @param x A data.frame, tibble, data.table, or matrix of predictors.
+#' @param x A data.frame, tibble, data.table, matrix of predictors, or a
+#'   formula (e.g., `mpg ~ .`).
+#' @param ... Arguments passed to methods. For the formula method, these are
+#'   forwarded to the default (XY) method.
+#'
+#' @return An object of class `"tabpfn_regressor"`.
+#'
+#' @examples
+#' \dontrun{
+#' # XY interface
+#' fit <- tabpfn_regressor(mtcars[, -1], mtcars$mpg)
+#' predict(fit, mtcars[1:5, -1])
+#'
+#' # Formula interface
+#' fit <- tabpfn_regressor(mpg ~ ., data = mtcars)
+#' predict(fit, mtcars[1:5, ])
+#' }
+#'
+#' @export
+tabpfn_regressor <- function(x, ...) {
+  UseMethod("tabpfn_regressor")
+}
+
+#' @rdname tabpfn_regressor
 #' @param y A numeric vector of target values.
 #' @param n_estimators Integer. Number of ensemble members. Default `8L`.
 #' @param softmax_temperature Double. Temperature for softmax. Default `0.9`.
 #' @param device Character. `"auto"`, `"cpu"`, or `"cuda"`. Default `"auto"`.
 #' @param model_version Character or `NULL`. Default `NULL` (v2.6).
 #' @param random_state Integer. Random seed. Default `0L`.
-#' @param ... Additional arguments passed to the Python `TabPFNRegressor`.
-#'
-#' @return An object of class `"tabpfn_regressor"`.
-#'
-#' @examples
-#' \dontrun{
-#' fit <- tabpfn_regressor(mtcars[, -1], mtcars$mpg)
-#' predict(fit, mtcars[1:5, -1])
-#' }
-#'
+#' @param ignore_pretraining_limits Logical. If `TRUE`, bypass the row and
+#'   column limit checks (class limit is always enforced). Default `FALSE`.
+#' @param training_set_limit Integer or `Inf`. Maximum number of training
+#'   samples. If the training set exceeds this limit, it is stratified-subsampled
+#'   (by outcome quartile) to this size. Default `Inf` (no subsampling).
+#' @param control A `control_tabpfn` object created by [control_tabpfn()], or
+#'   `NULL` (default) for Python defaults.
 #' @export
-tabpfn_regressor <- function(x, y,
-                              n_estimators = 8L,
-                              softmax_temperature = 0.9,
-                              device = "auto",
-                              model_version = NULL,
-                              random_state = 0L,
-                              ...) {
+tabpfn_regressor.default <- function(x, y,
+                                      n_estimators = 8L,
+                                      softmax_temperature = 0.9,
+                                      device = "auto",
+                                      model_version = NULL,
+                                      random_state = 0L,
+                                      ignore_pretraining_limits = FALSE,
+                                      training_set_limit = Inf,
+                                      control = NULL,
+                                      ...) {
   y <- validate_regressor_inputs(x, y)
+
+  # Subsample before constraint check so limit can bring data within bounds
+  sub_idx <- subsample_training_set(x, y, training_set_limit)
+  if (!is.null(sub_idx)) {
+    x <- x[sub_idx, , drop = FALSE]
+    y <- y[sub_idx]
+  }
+
+  check_data_constraints(x, y, ignore_limits = ignore_pretraining_limits)
   check_tabpfn_available()
   feature_names <- colnames(x)
   x_np <- ensure_numpy_array(x)
@@ -36,28 +68,30 @@ tabpfn_regressor <- function(x, y,
   py_version <- resolve_model_version(model_version)
   version_label <- model_version %||% "v2.6"
 
+  # Merge control args with explicit args
+  base_args <- list(
+    n_estimators = as.integer(n_estimators),
+    softmax_temperature = softmax_temperature,
+    device = device,
+    random_state = as.integer(random_state)
+  )
+  ctrl_args <- if (!is.null(control)) unclass(control) else list()
+  all_args <- c(base_args, ctrl_args, list(...))
+
   reg <- wrap_python_error({
     if (!is.null(py_version)) {
-      tabpfn_module$TabPFNRegressor$create_default_for_version(
-        py_version,
-        n_estimators = as.integer(n_estimators),
-        softmax_temperature = softmax_temperature,
-        device = device,
-        random_state = as.integer(random_state),
-        ...
+      do.call(
+        tabpfn_module$TabPFNRegressor$create_default_for_version,
+        c(list(py_version), all_args)
       )
     } else {
-      tabpfn_module$TabPFNRegressor(
-        n_estimators = as.integer(n_estimators),
-        softmax_temperature = softmax_temperature,
-        device = device,
-        random_state = as.integer(random_state),
-        ...
-      )
+      do.call(tabpfn_module$TabPFNRegressor, all_args)
     }
   })
 
-  wrap_python_error(reg$fit(x_np, y_np))
+  py_log <- reticulate::py_capture_output(
+    wrap_python_error(reg$fit(x_np, y_np))
+  )
 
   structure(
     list(
@@ -71,10 +105,23 @@ tabpfn_regressor <- function(x, y,
         softmax_temperature = softmax_temperature,
         device = device
       ),
+      control = control,
+      logging = py_log,
       .py = reg
     ),
     class = "tabpfn_regressor"
   )
+}
+
+#' @rdname tabpfn_regressor
+#' @param data A data.frame containing both predictors and outcome (used with
+#'   the formula interface).
+#' @export
+tabpfn_regressor.formula <- function(x, data, ...) {
+  mf <- stats::model.frame(x, data = data)
+  y <- stats::model.response(mf)
+  predictors <- mf[, -1, drop = FALSE]
+  tabpfn_regressor.default(predictors, y, ...)
 }
 
 #' Predict with a TabPFN Regressor
@@ -96,6 +143,15 @@ predict.tabpfn_regressor <- function(object, new_data, type = "numeric",
       'type must be one of: ', paste0('"', valid_types, '"', collapse = ", "),
       '. Got: "', type, '"'
     ))
+  }
+
+  # If new_data has extra columns (e.g., the outcome from formula interface),
+  # select only the feature columns used during training
+  if (is.data.frame(new_data) && !is.null(object$feature_names)) {
+    matching <- intersect(object$feature_names, colnames(new_data))
+    if (length(matching) == length(object$feature_names)) {
+      new_data <- new_data[, object$feature_names, drop = FALSE]
+    }
   }
 
   x_np <- ensure_numpy_array(new_data)
@@ -139,6 +195,23 @@ print.tabpfn_regressor <- function(x, ...) {
   cat("# n_estimators=", x$params$n_estimators,
       ", device=", x$params$device, "\n", sep = "")
   invisible(x)
+}
+
+#' Augment data with TabPFN regressor predictions
+#'
+#' Binds numeric predictions to the input data.
+#'
+#' @param x A fitted `tabpfn_regressor` object.
+#' @param new_data A data.frame, tibble, data.table, or matrix.
+#' @param ... Not used.
+#'
+#' @return A tibble with original data plus a `.pred` column.
+#'
+#' @export
+augment.tabpfn_regressor <- function(x, new_data, ...) {
+  preds <- predict(x, new_data, type = "numeric")
+  new_data <- tibble::as_tibble(new_data)
+  dplyr::bind_cols(new_data, preds)
 }
 
 #' @export

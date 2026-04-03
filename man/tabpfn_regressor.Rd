@@ -2,9 +2,13 @@
 % Please edit documentation in R/regressor.R
 \name{tabpfn_regressor}
 \alias{tabpfn_regressor}
+\alias{tabpfn_regressor.default}
+\alias{tabpfn_regressor.formula}
 \title{Fit a TabPFN Regressor}
 \usage{
-tabpfn_regressor(
+tabpfn_regressor(x, ...)
+
+\method{tabpfn_regressor}{default}(
   x,
   y,
   n_estimators = 8L,
@@ -12,11 +16,20 @@ tabpfn_regressor(
   device = "auto",
   model_version = NULL,
   random_state = 0L,
+  ignore_pretraining_limits = FALSE,
+  training_set_limit = Inf,
+  control = NULL,
   ...
 )
+
+\method{tabpfn_regressor}{formula}(x, data, ...)
 }
 \arguments{
-\item{x}{A data.frame, tibble, data.table, or matrix of predictors.}
+\item{x}{A data.frame, tibble, data.table, matrix of predictors, or a
+formula (e.g., \code{mpg ~ .}).}
+
+\item{...}{Arguments passed to methods. For the formula method, these are
+forwarded to the default (XY) method.}
 
 \item{y}{A numeric vector of target values.}
 
@@ -30,7 +43,18 @@ tabpfn_regressor(
 
 \item{random_state}{Integer. Random seed. Default \code{0L}.}
 
-\item{...}{Additional arguments passed to the Python \code{TabPFNRegressor}.}
+\item{ignore_pretraining_limits}{Logical. If \code{TRUE}, bypass the row and
+column limit checks (class limit is always enforced). Default \code{FALSE}.}
+
+\item{training_set_limit}{Integer or \code{Inf}. Maximum number of training
+samples. If the training set exceeds this limit, it is stratified-subsampled
+(by outcome quartile) to this size. Default \code{Inf} (no subsampling).}
+
+\item{control}{A \code{control_tabpfn} object created by \code{\link[=control_tabpfn]{control_tabpfn()}}, or
+\code{NULL} (default) for Python defaults.}
+
+\item{data}{A data.frame containing both predictors and outcome (used with
+the formula interface).}
 }
 \value{
 An object of class \code{"tabpfn_regressor"}.
@@ -40,8 +64,13 @@ Trains a TabPFN regressor on tabular data.
 }
 \examples{
 \dontrun{
+# XY interface
 fit <- tabpfn_regressor(mtcars[, -1], mtcars$mpg)
 predict(fit, mtcars[1:5, -1])
+
+# Formula interface
+fit <- tabpfn_regressor(mpg ~ ., data = mtcars)
+predict(fit, mtcars[1:5, ])
 }
 
 }
